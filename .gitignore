@@ -1,0 +1,45 @@
+# ─── 시크릿 (절대 커밋 금지) ───────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.jks
+secrets/
+# 개인 로컬 오버라이드. 커밋되는 설정은 application.yml 하나뿐이다.
+src/main/resources/application-local.yml
+src/main/resources/application-local.yaml
+src/main/resources/application-prod.yml
+src/main/resources/application-prod.yaml
+src/main/resources/application-secret.yml
+
+# ─── Gradle / Java ───────────────────────────────────────
+build/
+.gradle/
+out/
+bin/
+*.class
+*.log
+*.hprof
+# gradle-wrapper.jar 는 커밋한다 — 이게 없으면 받은 사람이 빌드를 못 한다.
+
+# ─── IDE ─────────────────────────────────────────────────
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/*
+!.vscode/extensions.json
+.settings/
+.project
+.classpath
+
+# ─── OS ──────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── 로컬 업로드/임시 ─────────────────────────────────────
+uploads/
+tmp/

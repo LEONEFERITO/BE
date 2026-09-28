@@ -1,0 +1,39 @@
+# 로컬 개발용 인프라. 운영 구성이 아니다 (운영은 Phase 7, D6 확정 후).
+#
+#   docker compose up -d      # 시작
+#   docker compose logs -f db # 로그
+#   docker compose down       # 정지 (데이터는 볼륨에 남는다)
+#   docker compose down -v    # 데이터까지 삭제
+#
+# 여기 적힌 자격증명은 localhost 전용 개발값이다. 운영 값은 .env 로만 넣는다.
+
+services:
+  db:
+    # 18 = 현행 최신 메이저 (2030년까지 지원). alpine 은 이미지가 작다.
+    # Testcontainers 도 같은 태그를 쓴다 — 로컬과 테스트 DB 버전이 갈리면 안 된다.
+    image: postgres:18-alpine
+    container_name: leoneferito-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-leoneferito}
+      POSTGRES_USER: ${DB_USERNAME:-leoneferito}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-leoneferito_local_only}
+      # 한글 정렬·비교를 위해 UTF-8 로 초기화한다.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+      TZ: Asia/Seoul
+    ports:
+      # 127.0.0.1 에만 바인딩한다. 0.0.0.0 으로 열면 같은 네트워크의 다른 기기가 DB 에 접근한다.
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      # BE 가 DB 준비를 기다릴 수 있게 한다.
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-leoneferito} -d ${DB_NAME:-leoneferito}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  db-data:
+    name: leoneferito-db-data

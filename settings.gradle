@@ -1,0 +1,12 @@
+plugins {
+	// build.gradle 의 java { toolchain { languageVersion = 21 } } 을 실제로 동작시키는 플러그인.
+	//
+	// Gradle 8 부터는 toolchain 을 선언만 해도 JDK 를 자동으로 받아오지 않는다.
+	// 받아올 곳을 알려주는 resolver 가 있어야 한다. 이 플러그인이 그 역할을 한다(foojay.io).
+	//
+	// 덕분에 이 저장소를 받은 사람은 JDK 21 을 직접 설치하지 않아도 되고,
+	// CI 와 로컬이 정확히 같은 JDK 21 로 빌드한다. (PATH 의 JDK 버전이 무엇이든 무관)
+	id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+}
+
+rootProject.name = 'leoneferito-api'

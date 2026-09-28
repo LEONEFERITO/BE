@@ -1,0 +1,115 @@
+# LEONEFERITO API 설정
+#
+# 프로필 구조
+#   local : 로컬 개발 (docker-compose 의 PostgreSQL 을 바라본다) — 기본값
+#   prod  : 운영 (모든 접속 정보를 환경변수에서 읽는다. 없으면 기동 실패 = fail closed)
+#
+# 개인 설정을 덮어쓰려면 application-local.yml 을 만든다 (.gitignore 처리되어 있음).
+# 시크릿은 이 파일에 적지 않는다. .env / 환경변수로만 넣는다.
+
+spring:
+  application:
+    name: leoneferito-api
+
+  profiles:
+    # 프로필을 지정하지 않으면 local. 운영에서 프로필을 깜빡하면 로컬 DB 를 찾다가
+    # 접속 실패로 기동이 멈춘다 — 잘못된 상태로 뜨는 것보다 낫다 (fail closed).
+    default: local
+
+  jpa:
+    hibernate:
+      # 스키마의 주인은 Flyway 다. Hibernate 는 검증만 한다.
+      # (create/update 로 두면 마이그레이션과 실제 스키마가 갈라진다)
+      ddl-auto: validate
+    # 뷰 렌더링 중 지연 로딩을 막는다. 끄지 않으면 N+1 이 조용히 숨는다.
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          # DB 에는 UTC 로 저장하고, 표시 시점에 한국 시간으로 바꾼다.
+          # 서버 시간대에 따라 값이 흔들리는 문제를 원천 차단한다.
+          time_zone: UTC
+        format_sql: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    # 운영 DB 에 이미 테이블이 있는 상태로 붙는 사고를 막는다.
+    baseline-on-migrate: false
+    validate-on-migrate: true
+
+server:
+  port: ${SERVER_PORT:8080}
+  # 에러 응답에 스택트레이스·메시지를 흘리지 않는다. 형식은 GlobalExceptionHandler 가 통일한다.
+  error:
+    include-stacktrace: never
+    include-message: never
+    include-binding-errors: never
+  # 프록시(Caddy/ALB) 뒤에 서므로 X-Forwarded-* 를 신뢰한다.
+  forward-headers-strategy: framework
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # health 만 공개한다. env/beans/metrics 는 내부 정보가 새므로 열지 않는다.
+        include: health
+  endpoint:
+    health:
+      # 상세 정보는 인증된 요청에만. (Phase 5 에서 인증이 붙기 전까지는 사실상 비공개)
+      show-details: when-authorized
+      probes:
+        enabled: true
+
+logging:
+  level:
+    root: INFO
+    com.leoneferito: INFO
+
+---
+# ─────────────────────────────────────────────────────────────
+# local — docker-compose 의 PostgreSQL. 이 자격증명은 localhost 전용 개발값이다.
+# ─────────────────────────────────────────────────────────────
+spring:
+  config:
+    activate:
+      on-profile: local
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:leoneferito}
+    username: ${DB_USERNAME:leoneferito}
+    password: ${DB_PASSWORD:leoneferito_local_only}
+    driver-class-name: org.postgresql.Driver
+
+logging:
+  level:
+    com.leoneferito: DEBUG
+    # 개발 중 실행 SQL 확인용. 운영 프로필에는 없다.
+    org.hibernate.SQL: DEBUG
+
+---
+# ─────────────────────────────────────────────────────────────
+# prod — 기본값을 주지 않는다. 환경변수가 비면 기동이 실패해야 한다.
+# ─────────────────────────────────────────────────────────────
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX:10}
+
+  jpa:
+    properties:
+      hibernate:
+        format_sql: false
+
+logging:
+  level:
+    root: WARN
+    com.leoneferito: INFO

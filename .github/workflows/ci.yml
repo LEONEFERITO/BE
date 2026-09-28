@@ -1,0 +1,68 @@
+name: CI
+
+# LEONEFERITO/BE — Spring Boot 4.1 / Java 21 / PostgreSQL 18
+#
+# Phase 1 범위: 시크릿 검사 + 빌드 + 테스트.
+# 배포(승인 게이트, 헬스체크 실패 시 롤백)는 Phase 7 에서 D6 확정 후 추가한다.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  secrets:
+    name: 시크릿 검사
+    runs-on: ubuntu-latest
+    steps:
+      # 외부 액션은 커밋 해시로 고정한다. 태그(@v5)는 나중에 다른 코드를 가리킬 수 있어
+      # 공급망 공격에 취약하다. 해시는 내용이 바뀌면 값이 달라진다.
+      - name: 체크아웃
+        # actions/checkout v5.0.0
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          fetch-depth: 0
+
+      - name: 시크릿 검사 (커밋 훅과 같은 스크립트)
+        run: |
+          chmod +x scripts/check-secrets.sh
+          ./scripts/check-secrets.sh
+
+  build:
+    name: 빌드·테스트
+    runs-on: ubuntu-latest
+    steps:
+      - name: 체크아웃
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      # build.gradle 의 toolchain 과 같은 21. toolchain 이 있어 없어도 Gradle 이 받아오지만,
+      # 미리 깔면 빌드가 빨라진다.
+      - name: JDK 21 설치
+        # actions/setup-java v5.0.0
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Gradle 설정
+        # gradle/actions/setup-gradle v4.4.4
+        uses: gradle/actions/setup-gradle@017a9effdb900e5b5b2fddfb590a105619dca3c3
+
+      # Testcontainers 가 실제 PostgreSQL 18 을 띄운다 (H2 같은 대체 DB 를 쓰지 않는다 —
+      # 방언이 달라 "테스트는 통과하는데 운영에서 깨지는" 문제가 생긴다).
+      # ubuntu-latest 러너에는 Docker 가 기본 설치되어 있다.
+      - name: 빌드 및 테스트
+        run: ./gradlew build --no-daemon
+
+      - name: 테스트 리포트 업로드
+        if: always()
+        # actions/upload-artifact v4.6.2
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: test-results
+          path: build/reports/tests/test/
+          retention-days: 7
