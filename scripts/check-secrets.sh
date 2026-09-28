@@ -83,6 +83,13 @@ done
 # 그래서 키워드 앞뒤로 [A-Za-z0-9_.-]* 를 허용한다.
 SECRET_KEY_RE='[A-Za-z0-9_.-]*(password|passwd|secret|token|api[_-]?key|apikey|credential|access[_-]?key)[A-Za-z0-9_.-]*[[:space:]]*[:=][[:space:]]*["'"'"']?[A-Za-z0-9/+_.=-]{8,}'
 
+# 타입 표기를 값으로 오인하지 않는다.
+#   credentials: Credentials)   token: AuthToken,   config: Options<T>;
+# 값이 대문자로 시작하는 식별자이고 뒤에 구두점이 오면 코드의 타입/변수 참조다.
+# 리터럴이 아니므로 시크릿일 수 없다.
+# .env 나 yml 처럼 뒤에 구두점이 없는 줄은 이 패턴에 걸리지 않으므로 그대로 검사된다.
+TYPE_ANNOTATION_RE=':[[:space:]]*[A-Z][A-Za-z0-9_]*(<[^>]*>)?[[:space:]]*[),;|&=]'
+
 ALLOW_RE=$(IFS='|'; echo "${ALLOWLIST[*]}")
 for f in $FILES; do
   [ -f "$f" ] || continue
@@ -91,7 +98,7 @@ for f in $FILES; do
   HITS=$(grep -nEi "$SECRET_KEY_RE" "$f" 2>/dev/null \
     | grep -vE '\$\{[A-Za-z_]+' \
     | grep -vE '[:=][[:space:]]*(""|'"''"'|$)' \
-    | grep -vEi '(example|placeholder|changeme|your[_-]|TODO|xxx+)' \
+    | grep -vEi '(example|placeholder|changeme|your[_-]|TODO|xxx+)'     | grep -vE "$TYPE_ANNOTATION_RE" \
     | grep -vE "$ALLOW_RE" || true)
   if [ -n "$HITS" ]; then
     report "하드코딩된 시크릿으로 보입니다" "$f"

@@ -6,8 +6,9 @@ import org.springframework.context.annotation.Bean;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
+// 하위 패키지 테스트(com.leoneferito.product 등)에서도 @Import 하므로 public 이어야 한다.
 @TestConfiguration(proxyBeanMethods = false)
-class TestcontainersConfiguration {
+public class TestcontainersConfiguration {
 
 	/**
 	 * 테스트용 PostgreSQL 컨테이너.
@@ -21,7 +22,7 @@ class TestcontainersConfiguration {
 	 */
 	@Bean
 	@ServiceConnection
-	PostgreSQLContainer postgresContainer() {
+	public PostgreSQLContainer postgresContainer() {
 		return new PostgreSQLContainer(DockerImageName.parse("postgres:18-alpine"));
 	}
 
