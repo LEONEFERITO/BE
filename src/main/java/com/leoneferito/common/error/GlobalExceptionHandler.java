@@ -12,6 +12,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import com.leoneferito.common.log.RequestLoggingFilter;
@@ -82,12 +83,89 @@ public class GlobalExceptionHandler {
 				.body(ErrorResponse.of("MALFORMED_REQUEST", "요청 형식이 올바르지 않습니다.", traceId));
 	}
 
+	/**
+	 * 쿼리 파라미터·경로변수의 타입이 맞지 않는 경우 (예: {@code ?category=KNITWEAR}).
+	 *
+	 * <p>이게 없으면 500 이 나간다. 클라이언트가 잘못 보낸 요청에 서버 오류로 답하면
+	 * 프론트는 자기 잘못인 줄 모르고 재시도하거나 장애로 신고한다. 400 이어야 한다.
+	 *
+	 * <p>응답에 <b>받은 값을 되비추지 않는다.</b> 그대로 돌려주면 그 값이 에러 화면이나
+	 * 로그 수집기에 그대로 실려 반사형 XSS·로그 오염의 통로가 된다. 값은 서버 로그에만 남긴다.
+	 */
+	@ExceptionHandler(MethodArgumentTypeMismatchException.class)
+	public ResponseEntity<ErrorResponse> handleTypeMismatch(MethodArgumentTypeMismatchException e, HttpServletRequest request) {
+		String traceId = currentTraceId();
+		log.warn("파라미터 타입 불일치 traceId={} path={} name={} value={}",
+				traceId, request.getRequestURI(), e.getName(), e.getValue());
+		return ResponseEntity.badRequest()
+				.body(ErrorResponse.of("INVALID_PARAMETER", "요청 값이 올바르지 않습니다.", traceId));
+	}
+
 	/** 존재하지 않는 정적 리소스·경로. 404 는 흔하므로 스택트레이스를 남기지 않는다. */
 	@ExceptionHandler(NoResourceFoundException.class)
 	public ResponseEntity<ErrorResponse> handleNotFound(NoResourceFoundException e, HttpServletRequest request) {
 		String traceId = currentTraceId();
 		return ResponseEntity.status(HttpStatus.NOT_FOUND)
 				.body(ErrorResponse.of("NOT_FOUND", "요청한 리소스를 찾을 수 없습니다.", traceId));
+	}
+
+	/**
+	 * 도메인이 "없다" 고 판단한 경우.
+	 *
+	 * <p>비공개 상품을 403 으로 돌려주면 그 slug 가 존재한다는 사실이 샌다.
+	 * 없는 것과 볼 수 없는 것을 같은 답으로 덮는다 ({@link ResourceNotFoundException} 참고).
+	 * 예외 메시지는 로그에만 남기고 응답에는 넣지 않는다.
+	 */
+	@ExceptionHandler(ResourceNotFoundException.class)
+	public ResponseEntity<ErrorResponse> handleResourceNotFound(ResourceNotFoundException e, HttpServletRequest request) {
+		String traceId = currentTraceId();
+		log.info("리소스 없음 traceId={} path={} reason={}", traceId, request.getRequestURI(), e.getMessage());
+		return ResponseEntity.status(HttpStatus.NOT_FOUND)
+				.body(ErrorResponse.of("NOT_FOUND", "요청한 리소스를 찾을 수 없습니다.", traceId));
+	}
+
+	/**
+	 * 로그인 실패. 401 이다.
+	 *
+	 * <p>이유를 응답 코드로 구분하되, {@code INVALID_CREDENTIALS} 하나가
+	 * "없는 이메일 · 틀린 비밀번호 · 탈퇴한 계정" 을 모두 덮는다
+	 * ({@link com.leoneferito.auth.AuthenticationFailedException} 참고).
+	 */
+	@ExceptionHandler(com.leoneferito.auth.AuthenticationFailedException.class)
+	public ResponseEntity<ErrorResponse> handleAuthFailed(com.leoneferito.auth.AuthenticationFailedException e) {
+		String traceId = currentTraceId();
+		String message = switch (e.getReason()) {
+			case INVALID_CREDENTIALS -> "이메일 또는 비밀번호가 올바르지 않습니다.";
+			case ACCOUNT_LOCKED -> "로그인 시도가 많아 계정이 잠겼습니다. 잠시 후 다시 시도해 주세요.";
+		};
+		return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+				.body(ErrorResponse.of(e.getReason().name(), message, traceId));
+	}
+
+	/**
+	 * 이미 가입된 이메일. 409 다.
+	 *
+	 * <p>예외 메시지에는 이메일이 들어 있지만 응답에는 넣지 않는다 —
+	 * 입력값을 그대로 되비추면 에러 화면에 그려지는 경로가 생긴다.
+	 */
+	@ExceptionHandler(com.leoneferito.auth.EmailAlreadyRegisteredException.class)
+	public ResponseEntity<ErrorResponse> handleDuplicateEmail(com.leoneferito.auth.EmailAlreadyRegisteredException e, HttpServletRequest request) {
+		String traceId = currentTraceId();
+		log.info("가입 중복 traceId={} reason={}", traceId, e.getMessage());
+		return ResponseEntity.status(HttpStatus.CONFLICT)
+				.body(ErrorResponse.of("EMAIL_ALREADY_REGISTERED", "이미 가입된 이메일입니다.", traceId));
+	}
+
+	/**
+	 * 비밀번호 규칙 위반. 400 이다.
+	 *
+	 * <p>이 예외만은 <b>메시지를 그대로 내보낸다.</b> 무엇을 고쳐야 하는지 알려주지 않으면
+	 * 손님이 같은 실패를 반복한다. 비밀번호 규칙은 어차피 공개된 정보라 숨겨서 얻는 게 없다.
+	 */
+	@ExceptionHandler(com.leoneferito.auth.WeakPasswordException.class)
+	public ResponseEntity<ErrorResponse> handleWeakPassword(com.leoneferito.auth.WeakPasswordException e) {
+		return ResponseEntity.badRequest()
+				.body(ErrorResponse.of("WEAK_PASSWORD", e.getMessage(), currentTraceId()));
 	}
 
 	/**

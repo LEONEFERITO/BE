@@ -2,6 +2,8 @@ package com.leoneferito;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -80,7 +82,14 @@ class SkeletonVerificationTest {
 	@Test
 	@DisplayName("공개 API 의 검증 실패는 필드명을 노출하지 않는다")
 	void publicApiHidesFieldErrors() throws Exception {
+		/*
+		 * csrf()·user() 는 보안이 붙으면서 필요해졌다. 이 테스트가 보려는 건
+		 * "검증 실패 응답의 모양" 이지 인증이 아니라서, 인증은 통과시켜 두고 본론만 본다.
+		 * (인증·CSRF 자체는 AuthApiTest 가 따로 검증한다)
+		 */
 		mockMvc.perform(post("/api/public/__probe/validate")
+						.with(csrf())
+						.with(user("tester"))
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("{}"))
 				.andExpect(status().isBadRequest())
@@ -95,6 +104,8 @@ class SkeletonVerificationTest {
 	@DisplayName("관리자 API 의 검증 실패는 필드별 메시지를 내려준다")
 	void adminApiExposesFieldErrors() throws Exception {
 		mockMvc.perform(post("/api/admin/__probe/validate")
+						.with(csrf())
+						.with(user("tester"))
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("{}"))
 				.andExpect(status().isBadRequest())

@@ -81,14 +81,21 @@ done
 #   aws_secret_access_key = "..."   ← secret 이 = 바로 앞이 아니다
 #   spring.datasource.password=...  ← password 앞에 점 표기가 붙는다
 # 그래서 키워드 앞뒤로 [A-Za-z0-9_.-]* 를 허용한다.
-SECRET_KEY_RE='[A-Za-z0-9_.-]*(password|passwd|secret|token|api[_-]?key|apikey|credential|access[_-]?key)[A-Za-z0-9_.-]*[[:space:]]*[:=][[:space:]]*["'"'"']?[A-Za-z0-9/+_.=-]{8,}'
+SECRET_KEY_RE='[A-Za-z0-9_.-]*(password|passwd|secret|token|api[_-]?key|apikey|credential|access[_-]?key)[A-Za-z0-9_.-]*[[:space:]]*[:=][[:space:]]*["'"'"']?[A-Za-z0-9/+_.=@!#%^&*?~$-]{8,}'
 
-# 타입 표기를 값으로 오인하지 않는다.
-#   credentials: Credentials)   token: AuthToken,   config: Options<T>;
-# 값이 대문자로 시작하는 식별자이고 뒤에 구두점이 오면 코드의 타입/변수 참조다.
-# 리터럴이 아니므로 시크릿일 수 없다.
-# .env 나 yml 처럼 뒤에 구두점이 없는 줄은 이 패턴에 걸리지 않으므로 그대로 검사된다.
+# ── 코드에서 값이 '리터럴이 아닌' 경우를 걸러낸다 ───────────
+#
+# 시크릿은 **따옴표 안의 값**일 때만 시크릿이다. 아래는 전부 코드이고 비밀이 아니다:
+#   credentials: Credentials)                타입 표기
+#   this.passwordEncoder = passwordEncoder;  변수 대입
+#   boolean ok = passwordEncoder.matches(    메서드 호출
+#   String token = JsonPath.read(            메서드 호출
+#
+# 판별 기준은 '값이 식별자이고 뒤에 코드 구두점( ; , ) ( )이 온다'이다.
+# .env · yml · properties 는 값 뒤에 구두점이 없으므로 이 규칙에 걸리지 않는다
+# — 즉 설정 파일의 진짜 시크릿은 그대로 잡힌다.
 TYPE_ANNOTATION_RE=':[[:space:]]*[A-Z][A-Za-z0-9_]*(<[^>]*>)?[[:space:]]*[),;|&=]'
+CODE_REFERENCE_RE='[:=][[:space:]]*[A-Za-z_][A-Za-z0-9_.]*[[:space:]]*[;,()]'
 
 ALLOW_RE=$(IFS='|'; echo "${ALLOWLIST[*]}")
 for f in $FILES; do
@@ -98,7 +105,9 @@ for f in $FILES; do
   HITS=$(grep -nEi "$SECRET_KEY_RE" "$f" 2>/dev/null \
     | grep -vE '\$\{[A-Za-z_]+' \
     | grep -vE '[:=][[:space:]]*(""|'"''"'|$)' \
-    | grep -vEi '(example|placeholder|changeme|your[_-]|TODO|xxx+)'     | grep -vE "$TYPE_ANNOTATION_RE" \
+    | grep -vEi '(example|placeholder|changeme|your[_-]|TODO|xxx+)' \
+    | grep -vE "$TYPE_ANNOTATION_RE" \
+    | grep -vE "$CODE_REFERENCE_RE" \
     | grep -vE "$ALLOW_RE" || true)
   if [ -n "$HITS" ]; then
     report "하드코딩된 시크릿으로 보입니다" "$f"
