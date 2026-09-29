@@ -1,5 +1,6 @@
 package com.leoneferito.product;
 
+import com.leoneferito.media.MediaAsset;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -7,6 +8,8 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
@@ -99,6 +102,29 @@ public class Product {
      */
     @Column(name = "lead_time_days")
     private Short leadTimeDays;
+
+    /**
+     * 상세 사이즈 차트 이미지.
+     *
+     * <p>상품 사진({@link #images})과 따로 둔다. 갤러리에 섞으면 손님이 사진을 넘기다
+     * 표를 만나 상품 컷으로 오해한다. 놓이는 자리가 달라서 보관도 나눈다.
+     *
+     * <p>{@code LAZY} 인 이유: 목록 조회에서는 차트가 필요 없는데 EAGER 면
+     * 상품마다 조인이 하나씩 더 붙는다.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "size_chart_media_id")
+    private MediaAsset sizeChart;
+
+    /**
+     * 차트 대체 텍스트.
+     *
+     * <p>표를 이미지로 만든 이상 이 문장이 <b>스크린리더에게는 유일한 정보원</b>이다.
+     * 이미지가 있는데 이게 비면 그 사용자에게 사이즈 구간이 통째로 없는 것과 같아서,
+     * DB CHECK 가 그 조합을 막는다(V7).
+     */
+    @Column(name = "size_chart_alt")
+    private String sizeChartAlt;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -320,6 +346,28 @@ public class Product {
         this.modelHeightCm = heightCm;
         this.modelWeightKg = weightKg;
         this.modelSize = size;
+    }
+
+    public MediaAsset getSizeChart() {
+        return sizeChart;
+    }
+
+    public String getSizeChartAlt() {
+        return sizeChartAlt;
+    }
+
+    /**
+     * 차트를 설정한다. 이미지와 설명을 <b>함께</b> 받는다.
+     *
+     * <p>따로 두면 이미지만 바꾸고 설명은 옛것이 남는 일이 생긴다. 한 메서드로 묶어
+     * 둘이 항상 같이 움직이게 한다. 이미지를 지울 때는 {@code (null, null)} 을 넘긴다.
+     */
+    public void setSizeChart(MediaAsset media, String alt) {
+        if (media != null && (alt == null || alt.isBlank())) {
+            throw new IllegalArgumentException("사이즈 차트에는 대체 텍스트가 필요합니다.");
+        }
+        this.sizeChart = media;
+        this.sizeChartAlt = media == null ? null : alt;
     }
 
     public Short getLeadTimeDays() {

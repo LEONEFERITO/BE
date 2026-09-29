@@ -82,6 +82,7 @@ public class ProductQueryService {
                 p.getCare(),
                 new ProductResponse.Model(p.getModelHeightCm(), p.getModelWeightKg(), p.getModelSize()),
                 p.getLeadTimeDays(),
+                toSizeChart(p),
                 p.getImages().stream()
                         .sorted(Comparator.comparingInt(ProductImage::getSortOrder))
                         .map(this::toImage)
@@ -90,6 +91,16 @@ public class ProductQueryService {
                         .sorted(Comparator.comparingInt(ProductSku::getSortOrder))
                         .map(this::toSku)
                         .toList());
+    }
+
+    /** 차트가 없으면 null 을 준다. 화면은 그 자리를 비우고 안내 문구를 띄운다. */
+    private ProductResponse.SizeChart toSizeChart(Product p) {
+        if (p.getSizeChart() == null) return null;
+        return new ProductResponse.SizeChart(
+                mediaUrls.urlFor(p.getSizeChart()),
+                p.getSizeChartAlt(),
+                p.getSizeChart().getWidth(),
+                p.getSizeChart().getHeight());
     }
 
     private ProductResponse.Image toImage(ProductImage image) {

@@ -57,8 +57,19 @@ public final class ProductResponse {
              * (Product.isPublishable). 그래서 상세 응답에서는 사실상 항상 채워져 있다.
              */
             Short leadTimeDays,
+            /** 상세 사이즈 차트. 없으면 null — 화면이 그 자리를 비운다. */
+            SizeChart sizeChart,
             List<Image> images,
             List<Sku> skus) {
+    }
+
+    /**
+     * 상세 사이즈 차트.
+     *
+     * <p>{@code width}/{@code height} 를 함께 주는 이유: 화면이 자리를 미리 잡아야
+     * 이미지가 도착하면서 아래 구매 버튼이 밀리지 않는다(레이아웃 이동).
+     */
+    public record SizeChart(String url, String alt, Integer width, Integer height) {
     }
 
     public record Image(String url, String kind, String alt) {

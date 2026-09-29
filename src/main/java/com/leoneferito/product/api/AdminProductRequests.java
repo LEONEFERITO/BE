@@ -5,6 +5,7 @@ import com.leoneferito.product.ProductCategory;
 import com.leoneferito.product.ProductImageKind;
 import com.leoneferito.product.ProductLine;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -40,6 +41,8 @@ public final class AdminProductRequests {
     public static final int BODY_MAX = 2000;
     /** 원단·관리 정보: 표 아래 문단. */
     public static final int SHORT_BODY_MAX = 500;
+    /** 사이즈 차트 대체 텍스트: 표 전체를 한 문단으로 옮겨 적을 만큼. */
+    public static final int SIZE_CHART_ALT_MAX = 300;
 
     public record Save(
             /*
@@ -80,8 +83,33 @@ public final class AdminProductRequests {
 
             Integer displayOrder,
 
+            /** 상세 사이즈 차트 이미지. 없으면 null. */
+            UUID sizeChartMediaId,
+
+            /*
+             * 차트 대체 텍스트. 일반 사진(120자)보다 길게 허용한다 —
+             * "사이즈 차트" 한 마디로는 스크린리더 사용자에게 아무것도 전달되지 않는다.
+             * 어떤 항목을 어느 사이즈 범위로 싣고 있는지가 들어가야 한다.
+             */
+            @Size(max = SIZE_CHART_ALT_MAX) String sizeChartAlt,
+
             @Valid List<Image> images,
             @Valid List<Sku> skus) {
+
+        /**
+         * 차트를 올렸으면 설명이 있어야 한다.
+         *
+         * <p>엔티티({@code Product.setSizeChart})도 같은 조합을 막지만, 거기서 막으면
+         * {@code IllegalArgumentException} 이 되어 <b>500</b> 으로 나간다.
+         * 클라이언트가 잘못 보낸 요청에 서버 오류로 답하면 프론트는 자기 잘못인 줄 모른다.
+         * 그래서 <b>경계에서</b> 잡아 400 으로 돌려주고, 엔티티 검사는 마지막 방어선으로 남긴다
+         * (그쪽이 걸리면 그건 우리 코드의 버그이므로 500 이 맞다).
+         */
+        @AssertTrue(message = "사이즈 차트를 올렸으면 설명(대체 텍스트)이 필요합니다.")
+        public boolean isSizeChartDescribed() {
+            return sizeChartMediaId == null
+                    || (sizeChartAlt != null && !sizeChartAlt.isBlank());
+        }
     }
 
     public record Image(

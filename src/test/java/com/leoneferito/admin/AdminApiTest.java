@@ -311,6 +311,80 @@ class AdminApiTest {
     }
 
     @Nested
+    @DisplayName("상세 사이즈 차트")
+    class SizeChartUpload {
+
+        @Test
+        @DisplayName("차트를 붙이면 상세 응답에 주소와 설명이 나온다")
+        void chartAppearsInDetail() throws Exception {
+            String id = createProduct("with-chart");
+            String mediaId = uploadImage();
+            String chartId = uploadImage();
+
+            mockMvc.perform(asAdmin(put("/api/admin/products/" + id))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "slug": "with-chart",
+                                      "name": "차트 있는 상품",
+                                      "category": "SHIRT",
+                                      "line": "LEONE",
+                                      "priceKrw": 100000,
+                                      "leadTimeDays": 10,
+                                      "sizeChartMediaId": "%s",
+                                      "sizeChartAlt": "95~110 사이즈의 어깨·가슴·소매·총장 실측표",
+                                      "images": [ { "mediaId": "%s", "kind": "MAIN", "alt": "대표" } ]
+                                    }
+                                    """.formatted(chartId, mediaId)))
+                    .andExpect(status().isNoContent());
+
+            mockMvc.perform(asAdmin(post("/api/admin/products/" + id + "/publish")))
+                    .andExpect(status().isNoContent());
+
+            mockMvc.perform(get("/api/products/with-chart"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.sizeChart.url").exists())
+                    .andExpect(jsonPath("$.sizeChart.alt")
+                            .value("95~110 사이즈의 어깨·가슴·소매·총장 실측표"))
+                    // 자리를 미리 잡으려면 크기가 있어야 한다. 없으면 구매 버튼이 밀린다.
+                    .andExpect(jsonPath("$.sizeChart.width").value(80))
+                    .andExpect(jsonPath("$.sizeChart.height").value(100));
+        }
+
+        @Test
+        @DisplayName("차트만 있고 설명이 없으면 거부된다 — 스크린리더에겐 그게 전부다")
+        void chartWithoutAltRejected() throws Exception {
+            String id = createProduct("chart-no-alt");
+            String chartId = uploadImage();
+
+            mockMvc.perform(asAdmin(put("/api/admin/products/" + id))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "slug": "chart-no-alt",
+                                      "category": "SHIRT",
+                                      "line": "LEONE",
+                                      "sizeChartMediaId": "%s"
+                                    }
+                                    """.formatted(chartId)))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @DisplayName("차트가 없으면 상세에서 null 이다 — 화면이 그 자리를 비운다")
+        void noChartIsNull() throws Exception {
+            String id = createProduct("no-chart");
+            String mediaId = uploadImage();
+            attachImageAndPublish(id, "no-chart", mediaId);
+
+            mockMvc.perform(get("/api/products/no-chart"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.sizeChart").value(
+                            org.hamcrest.Matchers.nullValue()));
+        }
+    }
+
+    @Nested
     @DisplayName("입력 검증")
     class Validation {
 

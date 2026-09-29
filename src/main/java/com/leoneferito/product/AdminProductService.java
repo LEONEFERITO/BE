@@ -100,6 +100,17 @@ public class AdminProductService {
         product.setDisplayOrder(request.displayOrder() == null ? 0 : request.displayOrder());
 
         /*
+         * 차트는 이미지와 설명이 함께 움직인다. 엔티티가 그 짝을 강제하고,
+         * DB CHECK 가 한 번 더 막는다(V7) — 관리자 SQL 로 들어오는 경로까지 덮기 위해서다.
+         */
+        MediaAsset chart = request.sizeChartMediaId() == null
+                ? null
+                : mediaAssets.findById(request.sizeChartMediaId())
+                        .orElseThrow(() -> new ResourceNotFoundException(
+                                "사이즈 차트 이미지 없음: mediaId=" + request.sizeChartMediaId()));
+        product.setSizeChart(chart, request.sizeChartAlt());
+
+        /*
          * 순서가 중요하다. 비우고 **flush 해서 DELETE 를 먼저 내보낸 뒤** 채운다.
          *
          * 한 번에 하면 Hibernate 가 INSERT 를 먼저 보내고, 같은 사이즈를 그대로 다시
