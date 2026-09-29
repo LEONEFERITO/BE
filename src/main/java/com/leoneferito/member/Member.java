@@ -50,6 +50,16 @@ public class Member {
     @Column(nullable = false)
     private MemberStatus status = MemberStatus.ACTIVE;
 
+    /**
+     * 역할. 기본은 손님이다.
+     *
+     * <p>setter 를 두지 않는다. 화면이나 API 로 관리자가 되는 경로가 생기면
+     * 그 경로가 곧 권한 상승 취약점의 후보가 된다. 승격은 DB 에서 직접 한다.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private MemberRole role = MemberRole.MEMBER;
+
     @Column(name = "failed_login_attempts", nullable = false)
     private short failedLoginAttempts;
 
@@ -153,6 +163,10 @@ public class Member {
 
     public MemberStatus getStatus() {
         return status;
+    }
+
+    public MemberRole getRole() {
+        return role;
     }
 
     public short getFailedLoginAttempts() {

@@ -1,6 +1,7 @@
 package com.leoneferito.auth;
 
 import com.leoneferito.member.Member;
+import com.leoneferito.member.MemberRole;
 import java.io.Serializable;
 import java.util.Collection;
 import java.util.List;
@@ -29,15 +30,18 @@ public class MemberPrincipal implements UserDetails, Serializable {
     private final UUID id;
     private final String email;
     private final String name;
+    private final MemberRole role;
 
-    public MemberPrincipal(UUID id, String email, String name) {
+    public MemberPrincipal(UUID id, String email, String name, MemberRole role) {
         this.id = id;
         this.email = email;
         this.name = name;
+        this.role = role;
     }
 
     public static MemberPrincipal from(Member member) {
-        return new MemberPrincipal(member.getId(), member.getEmail(), member.getName());
+        return new MemberPrincipal(member.getId(), member.getEmail(),
+                member.getName(), member.getRole());
     }
 
     public UUID getId() {
@@ -52,10 +56,21 @@ public class MemberPrincipal implements UserDetails, Serializable {
         return name;
     }
 
+    public MemberRole getRole() {
+        return role;
+    }
+
+    /**
+     * 권한.
+     *
+     * <p>세션에 저장된 값이므로, DB 에서 역할을 바꿔도 <b>이미 로그인한 세션에는
+     * 반영되지 않는다.</b> 관리자를 내릴 때는 세션도 함께 끊어야 한다
+     * (SPRING_SESSION 에서 해당 PRINCIPAL_NAME 행을 지운다).
+     * 반대 방향(승격)은 다시 로그인하면 된다.
+     */
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        // 지금은 역할이 하나뿐이다. 관리자가 생기면 member 에 role 을 더한다.
-        return List.of(new SimpleGrantedAuthority("ROLE_MEMBER"));
+        return List.of(new SimpleGrantedAuthority(role.authority()));
     }
 
     /** 세션에 비밀번호를 담지 않는다. 위 클래스 주석 참고. */

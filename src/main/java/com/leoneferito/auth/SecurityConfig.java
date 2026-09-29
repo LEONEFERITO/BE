@@ -110,6 +110,16 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/products", "/api/products/**").permitAll()
                         .requestMatchers("/api/auth/signup", "/api/auth/login", "/api/auth/csrf").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
+                        /*
+                         * 업로드된 이미지는 공개다. 상품 사진이라 손님이 봐야 한다.
+                         * 대신 주소가 UUID 라 추측할 수 없고, 서빙 쪽이 nosniff 를 붙인다.
+                         */
+                        .requestMatchers(HttpMethod.GET, "/media/**").permitAll()
+                        /*
+                         * 관리자 영역. 여기 있는 건 전부 쓰기이고, 뚫리면 상품 정보와
+                         * 이미지 저장소가 통째로 남의 것이 된다.
+                         */
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         // CORS 사전 요청은 인증 대상이 아니다
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         /*

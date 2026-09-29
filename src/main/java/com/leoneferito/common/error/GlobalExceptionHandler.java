@@ -169,6 +169,71 @@ public class GlobalExceptionHandler {
 	}
 
 	/**
+	 * 업로드된 파일이 이미지로 받아들일 수 없는 경우. 400 이다.
+	 *
+	 * <p>메시지를 그대로 내보낸다 — 올리는 사람은 관리자(신뢰 경계 안)이고,
+	 * 무엇이 잘못됐는지 알아야 다시 올릴 수 있다.
+	 */
+	@ExceptionHandler(com.leoneferito.media.InvalidImageException.class)
+	public ResponseEntity<ErrorResponse> handleInvalidImage(com.leoneferito.media.InvalidImageException e) {
+		return ResponseEntity.badRequest()
+				.body(ErrorResponse.of("INVALID_IMAGE", e.getMessage(), currentTraceId()));
+	}
+
+	/**
+	 * 업로드 용량 초과. 413 이다.
+	 *
+	 * <p>이게 없으면 500 이 나간다. 서블릿이 요청을 다 받기 전에 끊으므로
+	 * 컨트롤러에 도달하지도 못하고, 관리자는 "저장이 안 된다" 만 보게 된다.
+	 * 413 과 함께 한도를 알려줘야 파일을 줄여서 다시 올릴 수 있다.
+	 */
+	@ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+	public ResponseEntity<ErrorResponse> handleUploadTooLarge(org.springframework.web.multipart.MaxUploadSizeExceededException e) {
+		long mb = com.leoneferito.media.MediaService.MAX_BYTES / 1024 / 1024;
+		return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+				.body(ErrorResponse.of("FILE_TOO_LARGE",
+						"이미지가 너무 큽니다. " + mb + "MB 이하로 올려 주세요.", currentTraceId()));
+	}
+
+	/** 이미 쓰고 있는 slug. 409 다. slug 는 URL 이라 겹칠 수 없다. */
+	@ExceptionHandler(com.leoneferito.product.AdminProductService.DuplicateSlugException.class)
+	public ResponseEntity<ErrorResponse> handleDuplicateSlug(com.leoneferito.product.AdminProductService.DuplicateSlugException e) {
+		String traceId = currentTraceId();
+		log.info("slug 중복 traceId={} reason={}", traceId, e.getMessage());
+		return ResponseEntity.status(HttpStatus.CONFLICT)
+				.body(ErrorResponse.of("DUPLICATE_SLUG", "이미 사용 중인 주소(slug)입니다.", traceId));
+	}
+
+	/**
+	 * 공개된 상품의 주소를 바꾸려 한 경우. 409 다.
+	 *
+	 * <p>조용히 무시하면 관리자는 바뀐 줄 안다. 거부하고 이유를 말한다.
+	 */
+	@ExceptionHandler(com.leoneferito.product.AdminProductService.SlugChangeNotAllowedException.class)
+	public ResponseEntity<ErrorResponse> handleSlugChange(com.leoneferito.product.AdminProductService.SlugChangeNotAllowedException e) {
+		return ResponseEntity.status(HttpStatus.CONFLICT)
+				.body(ErrorResponse.of("SLUG_IMMUTABLE",
+						"주소(slug)는 변경할 수 없습니다. 이미 걸린 링크가 모두 끊어집니다.",
+						currentTraceId()));
+	}
+
+	/**
+	 * 도메인 규칙 위반 (예: 값이 덜 찬 상품을 공개하려 함). 409 다.
+	 *
+	 * <p>메시지를 그대로 내보내지 않는다 — 내부 식별자가 섞여 있다.
+	 * 무엇이 비었는지는 관리자 화면이 스스로 판단해 표시한다.
+	 */
+	@ExceptionHandler(IllegalStateException.class)
+	public ResponseEntity<ErrorResponse> handleIllegalState(IllegalStateException e, HttpServletRequest request) {
+		String traceId = currentTraceId();
+		log.warn("도메인 규칙 위반 traceId={} path={} reason={}", traceId, request.getRequestURI(), e.getMessage());
+		return ResponseEntity.status(HttpStatus.CONFLICT)
+				.body(ErrorResponse.of("NOT_READY",
+						"공개에 필요한 값이 비어 있습니다. 이름 · 가격 · 제작 기간 · 대표 이미지를 확인해 주세요.",
+						traceId));
+	}
+
+	/**
 	 * 위에서 걸리지 않은 모든 예외.
 	 *
 	 * <p>클라이언트에는 예외 메시지를 절대 내보내지 않는다 (SQL 문, 파일 경로, 라이브러리 버전이

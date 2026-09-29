@@ -59,6 +59,10 @@ public class Product {
     @Column(name = "list_price_krw")
     private Long listPriceKrw;
 
+    /** 목록 카드용 한 줄. 상세 본문(description)과 쓰임이 다르다 — V6 주석 참고. */
+    @Column
+    private String summary;
+
     @Column
     private String description;
 
@@ -168,6 +172,42 @@ public class Product {
         sku.assignTo(this);
     }
 
+    /**
+     * 이미지와 사이즈를 비운다.
+     *
+     * <p><b>채우기와 나뉘어 있는 이유가 중요하다.</b> 한 메서드에서 비우고 바로 채우면
+     * Hibernate 가 DELETE 보다 INSERT 를 먼저 내보낸다. 그러면 같은 사이즈(95·100)를
+     * 그대로 다시 저장하는 흔한 경우에 유니크 제약을 위반하며 터진다 —
+     * 대표 이미지도 상품당 한 장이라 같은 문제가 난다.
+     *
+     * <p>그래서 호출하는 쪽이 <b>비운 뒤 flush</b> 하고 나서 채운다
+     * ({@code AdminProductService.apply}). 순서가 곧 정확성이라 주석으로 남긴다.
+     */
+    public void clearChildren() {
+        images.clear();
+        skus.clear();
+    }
+
+    /**
+     * 이미지 목록을 채운다. 반드시 {@link #clearChildren} + flush 이후에 부른다.
+     *
+     * <p>수정 화면은 "현재 상태 전체" 를 보낸다. 무엇이 추가·삭제됐는지 클라이언트가
+     * 계산해서 보내게 하면, 두 사람이 동시에 고칠 때 한쪽의 계산이 틀어진다.
+     */
+    public void replaceImages(List<ProductImage> next) {
+        next.forEach(this::addImage);
+    }
+
+    /** 사이즈 목록도 같은 이유로 통째로 교체한다. */
+    public void replaceSkus(List<ProductSku> next) {
+        next.forEach(this::addSku);
+    }
+
+    /** 초안으로 되돌린다. 공개된 상품을 내릴 때 쓴다. */
+    public void unpublish() {
+        this.status = ProductStatus.DRAFT;
+    }
+
     public void publish() {
         if (!isPublishable()) {
             throw new IllegalStateException(
@@ -214,6 +254,14 @@ public class Product {
 
     public void setListPriceKrw(Long listPriceKrw) {
         this.listPriceKrw = listPriceKrw;
+    }
+
+    public String getSummary() {
+        return summary;
+    }
+
+    public void setSummary(String summary) {
+        this.summary = summary;
     }
 
     public String getDescription() {

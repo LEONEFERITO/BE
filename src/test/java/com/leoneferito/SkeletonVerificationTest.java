@@ -105,7 +105,9 @@ class SkeletonVerificationTest {
 	void adminApiExposesFieldErrors() throws Exception {
 		mockMvc.perform(post("/api/admin/__probe/validate")
 						.with(csrf())
-						.with(user("tester"))
+						// /api/admin/** 은 ADMIN 권한이 필요하다. 이 테스트가 보려는 건
+						// 그 권한이 아니라 응답 모양이므로 권한은 통과시켜 둔다.
+						.with(user("tester").roles("ADMIN"))
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("{}"))
 				.andExpect(status().isBadRequest())
