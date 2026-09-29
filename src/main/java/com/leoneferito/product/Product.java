@@ -166,19 +166,27 @@ public class Product {
     }
 
     /**
-     * 공개해도 되는 상태인가.
+     * 공개하려면 무엇이 더 필요한가. 비어 있으면 공개할 수 있다.
      *
      * <p>이름·가격·제작 기간·대표 이미지가 모두 있어야 한다. 제작 기간이 조건에 든 건
      * 디자인이 아니라 법적 요건이다 — 주문 제작품은 결제 전에 소요 기간과
      * 청약철회 제한을 고지해야 한다.
      *
-     * <p>이 메서드는 <b>판단만</b> 한다. 상태를 바꾸지 않는다 — 공개는 사람이 하는 결정이다.
+     * <p>관리자 목록이 "왜 공개가 안 되는지" 를 보여주는 데 쓴다. {@link #isPublishable()} 도
+     * 이걸 쓴다 — 기준이 한 곳에만 있어야 목록의 표시와 실제 공개 거부가 어긋나지 않는다.
      */
+    public List<String> missingForPublish() {
+        List<String> missing = new ArrayList<>();
+        if (name == null) missing.add("name");
+        if (priceKrw == null) missing.add("priceKrw");
+        if (leadTimeDays == null) missing.add("leadTimeDays");
+        if (mainImage().isEmpty()) missing.add("mainImage");
+        return missing;
+    }
+
+    /** 판단만 한다. 상태를 바꾸지 않는다 — 공개는 사람이 하는 결정이다. */
     public boolean isPublishable() {
-        return name != null
-                && priceKrw != null
-                && leadTimeDays != null
-                && mainImage().isPresent();
+        return missingForPublish().isEmpty();
     }
 
     /** 대표 이미지. DB 부분 유니크 인덱스가 상품당 한 장만 허용한다. */

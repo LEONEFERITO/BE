@@ -51,6 +51,21 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
             """)
     Optional<Product> findPublishedBySlug(@Param("slug") String slug);
 
+    /**
+     * 관리자 목록. 상태와 무관하게 전부 — 초안이 보여야 이어서 고친다.
+     *
+     * <p>최근에 고친 것이 위로 온다. 관리자는 방금 만지던 걸 찾는다.
+     * 이미지의 media 까지 fetch 하는 이유: 목록이 대표 이미지 주소를 만들 때
+     * 상품마다 media 쿼리가 한 번씩 더 나간다(N+1).
+     */
+    @Query("""
+            SELECT DISTINCT p FROM Product p
+            LEFT JOIN FETCH p.images i
+            LEFT JOIN FETCH i.media
+            ORDER BY p.updatedAt DESC
+            """)
+    List<Product> findAllForAdmin();
+
     /** slug 는 URL 이라 중복되면 안 된다. DB 유니크 제약과 짝을 이루는 사전 확인용이다. */
     boolean existsBySlug(String slug);
 }

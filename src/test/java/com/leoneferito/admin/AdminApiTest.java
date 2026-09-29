@@ -16,6 +16,8 @@ import com.leoneferito.TestcontainersConfiguration;
 import com.leoneferito.product.ProductRepository;
 import java.io.ByteArrayOutputStream;
 import java.awt.image.BufferedImage;
+import java.util.List;
+import java.util.Map;
 import javax.imageio.ImageIO;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -381,6 +383,83 @@ class AdminApiTest {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.sizeChart").value(
                             org.hamcrest.Matchers.nullValue()));
+        }
+    }
+
+    @Nested
+    @DisplayName("관리자 조회")
+    class AdminRead {
+
+        @Test
+        @DisplayName("목록에는 초안도 나온다 — 공개 목록과 반대다")
+        void listIncludesDrafts() throws Exception {
+            createProduct("draft-in-list");
+
+            var row = rowOf("draft-in-list");
+            assertThat(row.get("status")).isEqualTo("DRAFT");
+        }
+
+        @Test
+        @DisplayName("목록이 공개에 모자란 항목을 알려준다")
+        void listShowsWhatIsMissing() throws Exception {
+            createProduct("missing-image"); // 이름·가격·제작 기간은 있고 이미지만 없다
+
+            var row = rowOf("missing-image");
+            assertThat(row.get("missingForPublish")).isEqualTo(List.of("mainImage"));
+        }
+
+        @Test
+        @DisplayName("수정 화면은 받은 그대로 다시 저장할 수 있다")
+        void editRoundTrips() throws Exception {
+            String id = createProduct("round-trip");
+            String mediaId = uploadImage();
+            attachImageAndPublish(id, "round-trip", mediaId);
+
+            String edit = mockMvc.perform(asAdmin(get("/api/admin/products/" + id)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value("PUBLISHED"))
+                    .andExpect(jsonPath("$.images[0].mediaId").value(mediaId))
+                    .andExpect(jsonPath("$.images[0].url").exists())
+                    .andReturn().getResponse().getContentAsString();
+
+            /*
+             * 화면이 하는 일 그대로다: 받은 JSON 을 손대지 않고 PUT.
+             * 여기서 400 이 나면 응답과 요청의 모양이 어긋난 것이고,
+             * 화면은 저장할 때마다 값을 잃는다.
+             */
+            mockMvc.perform(asAdmin(put("/api/admin/products/" + id))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(edit))
+                    .andExpect(status().isNoContent());
+
+            // 저장해도 공개 상태와 사진은 그대로다.
+            mockMvc.perform(get("/api/products/round-trip"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.images[0].alt").value("대표"));
+        }
+
+        @Test
+        @DisplayName("일반 회원은 관리자 목록을 볼 수 없다 — 초안이 새면 안 된다")
+        void memberCannotList() throws Exception {
+            mockMvc.perform(asMember(get("/api/admin/products")))
+                    .andExpect(status().isForbidden());
+        }
+
+        @Test
+        @DisplayName("없는 상품은 404 다")
+        void unknownIdIsNotFound() throws Exception {
+            mockMvc.perform(asAdmin(get("/api/admin/products/00000000-0000-0000-0000-000000000000")))
+                    .andExpect(status().isNotFound());
+        }
+
+        private Map<String, Object> rowOf(String slug) throws Exception {
+            String json = mockMvc.perform(asAdmin(get("/api/admin/products")))
+                    .andExpect(status().isOk())
+                    .andReturn().getResponse().getContentAsString();
+            List<Map<String, Object>> rows =
+                    com.jayway.jsonpath.JsonPath.read(json, "$[?(@.slug == '" + slug + "')]");
+            assertThat(rows).hasSize(1);
+            return rows.get(0);
         }
     }
 

@@ -16,6 +16,13 @@ spring:
     # 접속 실패로 기동이 멈춘다 — 잘못된 상태로 뜨는 것보다 낫다 (fail closed).
     default: local
 
+  autoconfigure:
+    exclude:
+      # Spring Boot 는 UserDetailsService 빈이 없으면 기본 계정(user / 매번 새로 만든 비밀번호)을
+      # 메모리에 만들고 비밀번호를 로그에 찍는다. 폼 로그인·Basic 을 꺼서 그 계정으로 들어올 길은
+      # 없지만, 로그에 자격증명이 남는 것 자체가 문제다. 쓰지 않는 계정은 만들지 않는다.
+      - org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration
+
   jpa:
     hibernate:
       # 스키마의 주인은 Flyway 다. Hibernate 는 검증만 한다.

@@ -1,11 +1,14 @@
 package com.leoneferito.product.api;
 
+import com.leoneferito.product.AdminProductQueryService;
 import com.leoneferito.product.AdminProductService;
 import jakarta.validation.Valid;
 import java.net.URI;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -32,9 +35,23 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminProductController {
 
     private final AdminProductService service;
+    private final AdminProductQueryService queries;
 
-    public AdminProductController(AdminProductService service) {
+    public AdminProductController(AdminProductService service, AdminProductQueryService queries) {
         this.service = service;
+        this.queries = queries;
+    }
+
+    /** 목록. 초안 포함 — 공개 목록과 반대다. */
+    @GetMapping
+    public List<AdminProductResponse.Row> list() {
+        return queries.list();
+    }
+
+    /** 수정 화면이 채울 현재 상태. 받은 그대로 PUT 으로 돌려보낼 수 있다. */
+    @GetMapping("/{id}")
+    public AdminProductResponse.Edit get(@PathVariable UUID id) {
+        return queries.edit(id);
     }
 
     /**

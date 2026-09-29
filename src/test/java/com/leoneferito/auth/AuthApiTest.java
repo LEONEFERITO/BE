@@ -18,9 +18,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpSession;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -51,6 +53,16 @@ class AuthApiTest {
 
     @Autowired
     private AuthService authService;
+
+    @Autowired
+    private ApplicationContext context;
+
+    @Test
+    @DisplayName("기본 계정(user / 자동 비밀번호)이 만들어지지 않는다")
+    void noGeneratedDefaultUser() {
+        // 이게 있으면 기동 로그에 비밀번호가 찍힌다. 우리 회원은 member 테이블에만 있다.
+        assertThat(context.getBeanNamesForType(UserDetailsService.class)).isEmpty();
+    }
 
     @BeforeEach
     void reset() {
