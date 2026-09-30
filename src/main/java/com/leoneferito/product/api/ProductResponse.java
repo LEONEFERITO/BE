@@ -59,6 +59,8 @@ public final class ProductResponse {
             Short leadTimeDays,
             /** 상세 사이즈 차트. 없으면 null — 화면이 그 자리를 비운다. */
             SizeChart sizeChart,
+            /** 인스타그램 게시물 주소. 없으면 null — 화면이 버튼을 숨긴다. */
+            String instagramUrl,
             List<Image> images,
             List<Sku> skus) {
     }

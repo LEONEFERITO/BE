@@ -45,6 +45,7 @@ public final class AdminProductResponse {
             UUID sizeChartMediaId,
             String sizeChartUrl,
             String sizeChartAlt,
+            String instagramUrl,
             List<Image> images,
             List<Sku> skus) {
     }

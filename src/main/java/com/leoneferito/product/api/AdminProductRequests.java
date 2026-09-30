@@ -43,6 +43,8 @@ public final class AdminProductRequests {
     public static final int SHORT_BODY_MAX = 500;
     /** 사이즈 차트 대체 텍스트: 표 전체를 한 문단으로 옮겨 적을 만큼. */
     public static final int SIZE_CHART_ALT_MAX = 300;
+    /** 인스타그램 게시물 주소. 실제 주소는 60자 안팎이다. 여유를 두되 문단은 못 들어오게. */
+    public static final int INSTAGRAM_URL_MAX = 300;
 
     public record Save(
             /*
@@ -92,6 +94,16 @@ public final class AdminProductRequests {
              * 어떤 항목을 어느 사이즈 범위로 싣고 있는지가 들어가야 한다.
              */
             @Size(max = SIZE_CHART_ALT_MAX) String sizeChartAlt,
+
+            /*
+             * 인스타그램 게시물 주소. 없으면 null.
+             * https + instagram.com 만 받는다 — 손님이 누르는 링크라 다른 곳을 가리키면 안 되고,
+             * 특히 javascript: 같은 주소가 href 에 들어가면 누르는 순간 스크립트가 실행된다.
+             */
+            @Size(max = INSTAGRAM_URL_MAX)
+            @Pattern(regexp = "^https://(www\\.)?instagram\\.com/[A-Za-z0-9._~/?=&%+-]*$",
+                    message = "인스타그램 주소(https://www.instagram.com/...)만 넣을 수 있습니다.")
+            String instagramUrl,
 
             @Valid List<Image> images,
             @Valid List<Sku> skus) {

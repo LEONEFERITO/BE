@@ -387,6 +387,77 @@ class AdminApiTest {
     }
 
     @Nested
+    @DisplayName("인스타그램 링크")
+    class InstagramLink {
+
+        private String bodyWith(String slug, String mediaId, String instagramJson) {
+            return """
+                    {
+                      "slug": "%s",
+                      "name": "상품",
+                      "category": "SHIRT",
+                      "line": "LEONE",
+                      "priceKrw": 100000,
+                      "leadTimeDays": 10,
+                      "instagramUrl": %s,
+                      "images": [ { "mediaId": "%s", "kind": "MAIN", "alt": "대표" } ]
+                    }
+                    """.formatted(slug, instagramJson, mediaId);
+        }
+
+        @Test
+        @DisplayName("넣은 주소가 상세 응답에 나온다")
+        void linkAppearsInDetail() throws Exception {
+            String id = createProduct("with-insta");
+            String mediaId = uploadImage();
+
+            mockMvc.perform(asAdmin(put("/api/admin/products/" + id))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(bodyWith("with-insta", mediaId,
+                                    "\"https://www.instagram.com/p/Cx1abc_Z-9/\"")))
+                    .andExpect(status().isNoContent());
+            mockMvc.perform(asAdmin(post("/api/admin/products/" + id + "/publish")))
+                    .andExpect(status().isNoContent());
+
+            mockMvc.perform(get("/api/products/with-insta"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.instagramUrl").value("https://www.instagram.com/p/Cx1abc_Z-9/"));
+        }
+
+        @Test
+        @DisplayName("없으면 null 이다 — 화면이 버튼을 숨긴다")
+        void absentIsNull() throws Exception {
+            String id = createProduct("no-insta");
+            attachImageAndPublish(id, "no-insta", uploadImage());
+
+            mockMvc.perform(get("/api/products/no-insta"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.instagramUrl").value(
+                            org.hamcrest.Matchers.nullValue()));
+        }
+
+        @Test
+        @DisplayName("인스타그램이 아닌 주소는 거부된다 — 손님이 누르는 링크다")
+        void otherHostsRejected() throws Exception {
+            String id = createProduct("bad-insta");
+            String mediaId = uploadImage();
+
+            for (String bad : java.util.List.of(
+                    "\"javascript:alert(1)\"",
+                    // 주소 중간에 instagram.com 을 끼워 넣은 위장
+                    "\"https://evil.example.com/instagram.com/p/1\"",
+                    "\"https://instagram.com.evil.example/p/1\"",
+                    // http 는 받지 않는다
+                    "\"http://www.instagram.com/p/1\"")) {
+                mockMvc.perform(asAdmin(put("/api/admin/products/" + id))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(bodyWith("bad-insta", mediaId, bad)))
+                        .andExpect(status().isBadRequest());
+            }
+        }
+    }
+
+    @Nested
     @DisplayName("관리자 조회")
     class AdminRead {
 

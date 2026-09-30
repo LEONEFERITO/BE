@@ -97,6 +97,7 @@ public class AdminProductService {
         product.setCare(request.care());
         product.setModel(request.modelHeightCm(), request.modelWeightKg(), request.modelSize());
         product.setLeadTimeDays(request.leadTimeDays());
+        product.setInstagramUrl(request.instagramUrl());
         product.setDisplayOrder(request.displayOrder() == null ? 0 : request.displayOrder());
 
         /*

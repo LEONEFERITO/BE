@@ -83,6 +83,7 @@ public class ProductQueryService {
                 new ProductResponse.Model(p.getModelHeightCm(), p.getModelWeightKg(), p.getModelSize()),
                 p.getLeadTimeDays(),
                 toSizeChart(p),
+                p.getInstagramUrl(),
                 p.getImages().stream()
                         .sorted(Comparator.comparingInt(ProductImage::getSortOrder))
                         .map(this::toImage)

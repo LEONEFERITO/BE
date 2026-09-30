@@ -126,6 +126,17 @@ public class Product {
     @Column(name = "size_chart_alt")
     private String sizeChartAlt;
 
+    /**
+     * 이 상품의 인스타그램 게시물 주소. 없는 상품이 있다 — 그러면 {@code null} 이고
+     * 상세 화면이 버튼을 숨긴다.
+     *
+     * <p>주소는 instagram.com 으로만 받는다(요청 검증 + V8 CHECK). 손님이 브랜드 페이지에서
+     * 누르는 링크라, 오타나 계정 탈취로 엉뚱한 곳(피싱·{@code javascript:})을 가리키면
+     * 그 책임이 브랜드로 돌아온다.
+     */
+    @Column(name = "instagram_url")
+    private String instagramUrl;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private ProductStatus status = ProductStatus.DRAFT;
@@ -376,6 +387,14 @@ public class Product {
         }
         this.sizeChart = media;
         this.sizeChartAlt = media == null ? null : alt;
+    }
+
+    public String getInstagramUrl() {
+        return instagramUrl;
+    }
+
+    public void setInstagramUrl(String instagramUrl) {
+        this.instagramUrl = instagramUrl;
     }
 
     public Short getLeadTimeDays() {

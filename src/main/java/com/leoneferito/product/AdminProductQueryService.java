@@ -73,6 +73,7 @@ public class AdminProductQueryService {
                 chart == null ? null : chart.getId(),
                 chart == null ? null : mediaUrls.urlFor(chart),
                 p.getSizeChartAlt(),
+                p.getInstagramUrl(),
                 p.getImages().stream()
                         .sorted(Comparator.comparingInt(ProductImage::getSortOrder))
                         .map(i -> new AdminProductResponse.Image(

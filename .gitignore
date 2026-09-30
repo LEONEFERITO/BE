@@ -43,3 +43,6 @@ desktop.ini
 # ─── 로컬 업로드/임시 ─────────────────────────────────────
 uploads/
 tmp/
+
+# 로컬 업로드 이미지 저장 폴더 (app.media.storage-dir 기본값). 업로드된 파일은 저장소에 넣지 않는다.
+media-store/
