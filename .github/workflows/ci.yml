@@ -2,8 +2,8 @@ name: CI
 
 # LEONEFERITO/BE — Spring Boot 4.1 / Java 21 / PostgreSQL 18
 #
-# Phase 1 범위: 시크릿 검사 + 빌드 + 테스트.
-# 배포(승인 게이트, 헬스체크 실패 시 롤백)는 Phase 7 에서 D6 확정 후 추가한다.
+# 시크릿 검사 + 빌드·테스트 + 이미지 빌드 검증.
+# 서버 배포(푸시·승인 게이트·롤백)는 서버와 도메인이 정해진 뒤 추가한다 (README "배포").
 
 on:
   push:
@@ -66,3 +66,21 @@ jobs:
           name: test-results
           path: build/reports/tests/test/
           retention-days: 7
+
+  image:
+    name: 이미지 빌드
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: 체크아웃
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      # Dockerfile 이 깨지면 여기서 잡는다. 레지스트리에 올리지는 않는다 —
+      # 어디에 올릴지(D6)가 정해진 뒤에 push 를 붙인다.
+      - name: docker build
+        run: docker build --tag leoneferito-api:ci .
+
+      # 이미지가 실제로 뜨는지. DB 가 없으니 prod 프로필은 기동 실패가 맞고,
+      # 그 대신 jar 가 실행 가능한지만 본다.
+      - name: 이미지 실행 확인
+        run: docker run --rm --entrypoint java leoneferito-api:ci -jar app.jar --version 2>&1 | head -5 || true

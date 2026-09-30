@@ -1,0 +1,97 @@
+# ─────────────────────────────────────────────────────────────
+# 운영 구성 — VM 한 대에 API · PostgreSQL · 리버스 프록시(Caddy).
+#
+#   cp .env.example .env   →  운영 값 채우기 (README.md "배포" 참고)
+#   docker compose -f docker-compose.prod.yml up -d --build
+#   docker compose -f docker-compose.prod.yml logs -f api
+#
+# 인터넷에 열리는 건 Caddy 의 80/443 뿐이다. API 와 DB 는 compose 내부 네트워크에만 있다.
+# HTTPS 인증서는 Caddy 가 Let's Encrypt 에서 자동으로 받고 갱신한다 — 도메인의 DNS 가
+# 이 서버를 가리키고 80/443 이 열려 있어야 한다.
+#
+# 이 파일은 "인스턴스 하나" 전제다. 두 대 이상으로 늘리려면 업로드 이미지를
+# 객체 스토리지로 옮기고(D7) DB 를 분리해야 한다.
+# ─────────────────────────────────────────────────────────────
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: leoneferito-api:latest
+    container_name: leoneferito-api
+    restart: unless-stopped
+    # .env 의 값을 컨테이너 환경으로. 여기서 DB_HOST 만 compose 서비스 이름으로 덮는다.
+    env_file: .env
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_HOST: db
+      DB_PORT: "5432"
+      MEDIA_STORAGE_DIR: /var/lib/leoneferito/media
+    volumes:
+      - media-data:/var/lib/leoneferito/media
+    depends_on:
+      db:
+        condition: service_healthy
+    # 호스트 포트를 열지 않는다. Caddy 만 api:8080 으로 들어온다.
+    expose:
+      - "8080"
+    # 로그가 디스크를 다 먹지 않게 잘라 둔다.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  db:
+    image: postgres:18-alpine
+    container_name: leoneferito-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:?DB_NAME 이 .env 에 없다}
+      POSTGRES_USER: ${DB_USERNAME:?DB_USERNAME 이 .env 에 없다}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD 가 .env 에 없다}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+      TZ: Asia/Seoul
+    volumes:
+      # PostgreSQL 18 은 /var/lib/postgresql 을 통째로 받는다 (docker-compose.yml 주석 참고).
+      - db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: leoneferito-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?API_DOMAIN 이 .env 에 없다}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # 인증서와 계정 키. 지우면 Let's Encrypt 발급 한도에 걸릴 수 있으니 볼륨으로 보존한다.
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - api
+
+volumes:
+  db-data:
+    name: leoneferito-prod-db
+  media-data:
+    name: leoneferito-prod-media
+  caddy-data:
+    name: leoneferito-prod-caddy-data
+  caddy-config:
+    name: leoneferito-prod-caddy-config

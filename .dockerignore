@@ -1,0 +1,19 @@
+# 이미지 빌드 컨텍스트에서 뺀다. 여기 있는 것이 들어가면 이미지가 커지거나(build/, .gradle/)
+# 비밀이 새거나(.env) 로컬 업로드가 딸려 들어간다(media-store/).
+.git
+.gradle
+build
+out
+.idea
+*.iml
+.vscode
+media-store
+uploads
+tmp
+*.log
+.env
+.env.*
+!.env.example
+docker-compose*.yml
+deploy
+README.md

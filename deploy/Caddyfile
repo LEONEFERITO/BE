@@ -1,0 +1,37 @@
+# API 앞의 리버스 프록시. 도메인은 .env 의 API_DOMAIN 에서 온다 (예: api.leoneferito.com).
+#
+# Caddy 가 하는 일:
+#   · HTTPS 인증서 자동 발급·갱신 (Let's Encrypt)
+#   · http → https 리다이렉트
+#   · 압축
+#   · X-Forwarded-* 헤더를 붙여 API 로 전달 — 그래서 application.yml 의
+#     forward-headers-strategy 가 framework 이고, 세션 쿠키가 secure 로 나간다.
+{$API_DOMAIN} {
+	encode zstd gzip
+
+	# 업로드 상한과 맞춘다 (spring.servlet.multipart.max-request-size = 12MB).
+	# 프록시가 먼저 끊어야 12MB 넘는 요청이 API 까지 오지 않는다.
+	request_body {
+		max_size 12MB
+	}
+
+	reverse_proxy api:8080 {
+		# API 가 죽었을 때 Caddy 가 502 로 답한다. 헬스체크는 compose 가 본다.
+		transport http {
+			dial_timeout 5s
+			response_header_timeout 30s
+		}
+	}
+
+	header {
+		# 서버 종류를 굳이 알려주지 않는다.
+		-Server
+		# 1년 HTTPS 고정. 도메인이 확정된 뒤에 켠다 — 한 번 켜면 http 로는 못 돌아간다.
+		# Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

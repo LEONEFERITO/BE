@@ -23,6 +23,10 @@ spring:
       # 없지만, 로그에 자격증명이 남는 것 자체가 문제다. 쓰지 않는 계정은 만들지 않는다.
       - org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration
 
+  lifecycle:
+    # graceful shutdown 이 기다리는 최대 시간. 이미지 업로드(10MB)가 끝날 만큼.
+    timeout-per-shutdown-phase: 20s
+
   jpa:
     hibernate:
       # 스키마의 주인은 Flyway 다. Hibernate 는 검증만 한다.
@@ -74,6 +78,9 @@ app:
 
 server:
   port: ${SERVER_PORT:8080}
+  # 재배포 때 SIGTERM 을 받으면 새 요청은 거절하고 진행 중인 요청은 끝까지 처리한 뒤 내린다.
+  # 없으면 업로드 중이던 요청이 잘린다. 기다리는 상한은 spring.lifecycle 에.
+  shutdown: graceful
   # 에러 응답에 스택트레이스·메시지를 흘리지 않는다. 형식은 GlobalExceptionHandler 가 통일한다.
   error:
     include-stacktrace: never
