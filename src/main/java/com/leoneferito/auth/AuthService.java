@@ -114,7 +114,19 @@ public class AuthService {
         }
 
         Member member = found.get();
-        boolean passwordMatches = passwordEncoder.matches(rawPassword, member.getPasswordHash());
+
+        /*
+         * 간편가입 회원은 비밀번호가 없다. 그래도 가짜 해시와 한 번 대조해서 시간을 맞춘다 —
+         * 즉시 거절하면 "이 이메일은 간편가입 계정이다" 가 응답 시간으로 샌다.
+         * 결과는 항상 실패다. 그 사람은 카카오/네이버 버튼으로 들어와야 한다.
+         */
+        boolean passwordMatches;
+        if (member.hasPassword()) {
+            passwordMatches = passwordEncoder.matches(rawPassword, member.getPasswordHash());
+        } else {
+            passwordEncoder.matches(rawPassword, dummyHash);
+            passwordMatches = false;
+        }
 
         if (member.isLocked(now)) {
             log.info("잠긴 계정 접근 memberId={} passwordMatched={}", member.getId(), passwordMatches);

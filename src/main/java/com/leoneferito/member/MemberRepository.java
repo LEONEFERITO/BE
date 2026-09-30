@@ -16,4 +16,7 @@ public interface MemberRepository extends JpaRepository<Member, UUID> {
     Optional<Member> findByEmail(String normalizedEmail);
 
     boolean existsByEmail(String normalizedEmail);
+
+    /** 간편가입 회원. (provider, providerUserId) 는 유일하다 (V9). */
+    Optional<Member> findByProviderAndProviderUserId(MemberProvider provider, String providerUserId);
 }

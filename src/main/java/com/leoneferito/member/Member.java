@@ -37,8 +37,18 @@ public class Member {
     @Column(nullable = false, unique = true)
     private String email;
 
-    @Column(name = "password_hash", nullable = false)
+    /** 간편가입 회원은 {@code null}. DB CHECK(V9)가 "LOCAL 이면 반드시 있음" 을 강제한다. */
+    @Column(name = "password_hash")
     private String passwordHash;
+
+    /** 어떻게 가입했는가. LOCAL 이면 비밀번호로, 그 외는 그 제공자로 로그인한다. */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private MemberProvider provider = MemberProvider.LOCAL;
+
+    /** 제공자가 준 사용자 id. LOCAL 이면 {@code null}. (provider, providerUserId) 가 유일하다. */
+    @Column(name = "provider_user_id")
+    private String providerUserId;
 
     @Column(nullable = false)
     private String name;
@@ -79,12 +89,38 @@ public class Member {
         // JPA
     }
 
+    /** 이메일·비밀번호 가입. */
     public Member(UUID id, String email, String passwordHash, String name, String phone) {
         this.id = Objects.requireNonNull(id, "id");
         this.email = normalizeEmail(email);
         this.passwordHash = Objects.requireNonNull(passwordHash, "passwordHash");
         this.name = Objects.requireNonNull(name, "name");
         this.phone = phone;
+    }
+
+    /**
+     * 간편가입. 비밀번호가 없고, 대신 제공자와 그쪽 사용자 id 로 식별한다.
+     *
+     * <p>이메일은 그래도 받는다 — 로그인 아이디이자 주문 안내가 가는 곳이다.
+     * 제공자가 이메일을 안 주면 여기까지 오지 않는다 ({@code SocialLoginService}).
+     */
+    public static Member social(UUID id, MemberProvider provider, String providerUserId,
+                                String email, String name) {
+        if (provider == MemberProvider.LOCAL) {
+            throw new IllegalArgumentException("LOCAL 은 비밀번호 가입이다");
+        }
+        Member member = new Member();
+        member.id = Objects.requireNonNull(id, "id");
+        member.provider = provider;
+        member.providerUserId = Objects.requireNonNull(providerUserId, "providerUserId");
+        member.email = normalizeEmail(email);
+        member.name = Objects.requireNonNull(name, "name");
+        return member;
+    }
+
+    /** 비밀번호로 로그인할 수 있는 계정인가. 간편가입 회원은 아니다. */
+    public boolean hasPassword() {
+        return passwordHash != null;
     }
 
     /**
@@ -167,6 +203,14 @@ public class Member {
 
     public MemberRole getRole() {
         return role;
+    }
+
+    public MemberProvider getProvider() {
+        return provider;
+    }
+
+    public String getProviderUserId() {
+        return providerUserId;
     }
 
     public short getFailedLoginAttempts() {

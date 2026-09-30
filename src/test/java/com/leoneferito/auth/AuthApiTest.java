@@ -6,11 +6,24 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import com.leoneferito.TestcontainersConfiguration;
+import com.leoneferito.auth.social.SocialLoginService;
+import com.leoneferito.auth.social.SocialProvider;
 import com.leoneferito.member.Member;
+import com.leoneferito.member.MemberProvider;
 import com.leoneferito.member.MemberRepository;
 import jakarta.servlet.http.Cookie;
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
+import org.springframework.security.oauth2.core.OAuth2AccessToken;
+import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
+import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -86,6 +99,98 @@ class AuthApiTest {
         return """
                 {"email":"%s","password":"%s"}
                 """.formatted(email, password);
+    }
+
+    @Nested
+    @DisplayName("간편가입 (카카오 · 네이버)")
+    class Social {
+
+        /** 제공자 호출을 흉내 낸다. 진짜 카카오는 키가 있어야 해서 여기서는 응답 모양만 재현한다. */
+        private SocialLoginService serviceReturning(Map<String, Object> attributes) {
+            return new SocialLoginService(members, request -> new DefaultOAuth2User(
+                    List.of(new SimpleGrantedAuthority("OAUTH2_USER")), attributes, "id"));
+        }
+
+        private OAuth2UserRequest kakaoRequest() {
+            return new OAuth2UserRequest(
+                    SocialProvider.KAKAO.registration("client-id-for-test", "not-a-secret"),
+                    new OAuth2AccessToken(OAuth2AccessToken.TokenType.BEARER, "token",
+                            Instant.now(), Instant.now().plusSeconds(60)));
+        }
+
+        private Map<String, Object> kakaoAttributes(String email) {
+            Map<String, Object> account = new HashMap<>();
+            if (email != null) account.put("email", email);
+            account.put("profile", Map.of("nickname", "김레오"));
+            return Map.of("id", 123456789L, "kakao_account", account);
+        }
+
+        @Test
+        @DisplayName("키가 없으면 제공자 목록이 비어 있고, 시작 주소는 서버 오류가 아니라 거절이다")
+        void disabledWithoutKeys() throws Exception {
+            mockMvc.perform(get("/api/auth/social"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.providers").isEmpty());
+
+            // 등록이 없으니 Spring 이 이 주소를 모른다 → 인증 필요(401). 500 이면 안 된다.
+            mockMvc.perform(get("/oauth2/authorization/kakao"))
+                    .andExpect(status().is4xxClientError());
+        }
+
+        @Test
+        @DisplayName("처음 오면 가입되고, 두 번째부터는 같은 회원이다")
+        void firstVisitSignsUp() {
+            SocialLoginService service = serviceReturning(kakaoAttributes("kim@kakao.test"));
+
+            var first = (SocialLoginService.SocialUser) service.loadUser(kakaoRequest());
+            var second = (SocialLoginService.SocialUser) service.loadUser(kakaoRequest());
+
+            assertThat(first.principal().getId()).isEqualTo(second.principal().getId());
+            Member saved = members.findByEmail("kim@kakao.test").orElseThrow();
+            assertThat(saved.getProvider()).isEqualTo(MemberProvider.KAKAO);
+            assertThat(saved.getProviderUserId()).isEqualTo("123456789");
+            assertThat(saved.hasPassword()).isFalse();
+            assertThat(saved.getName()).isEqualTo("김레오");
+        }
+
+        @Test
+        @DisplayName("이메일 제공에 동의하지 않으면 가입되지 않는다")
+        void emailRequired() {
+            SocialLoginService service = serviceReturning(kakaoAttributes(null));
+
+            assertThatThrownBy(() -> service.loadUser(kakaoRequest()))
+                    .isInstanceOf(OAuth2AuthenticationException.class)
+                    .extracting(e -> ((OAuth2AuthenticationException) e).getError().getErrorCode())
+                    .isEqualTo("email_required");
+            assertThat(members.count()).isEqualTo(1); // reset() 이 만든 홍길동뿐
+        }
+
+        @Test
+        @DisplayName("이메일로 이미 가입된 주소면 이어 붙이지 않는다")
+        void doesNotLinkByEmail() {
+            /*
+             * 제공자가 준 이메일만 믿고 기존 계정에 붙이면, 그 이메일을 제공자 쪽에서
+             * 확보한 사람이 남의 계정에 들어온다. 붙이지 않고 거절한다.
+             */
+            SocialLoginService service = serviceReturning(kakaoAttributes(EMAIL));
+
+            assertThatThrownBy(() -> service.loadUser(kakaoRequest()))
+                    .isInstanceOf(OAuth2AuthenticationException.class)
+                    .extracting(e -> ((OAuth2AuthenticationException) e).getError().getErrorCode())
+                    .isEqualTo("email_in_use");
+        }
+
+        @Test
+        @DisplayName("간편가입 회원은 비밀번호로 로그인할 수 없다 — 응답은 틀린 비밀번호와 같다")
+        void noPasswordLogin() throws Exception {
+            serviceReturning(kakaoAttributes("kim@kakao.test")).loadUser(kakaoRequest());
+
+            mockMvc.perform(withCsrf(post("/api/auth/login"))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(loginBody("kim@kakao.test", "anything at all 12345")))
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"));
+        }
     }
 
     @Nested

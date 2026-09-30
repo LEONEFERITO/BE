@@ -1,5 +1,7 @@
 package com.leoneferito.auth;
 
+import com.leoneferito.auth.social.SocialLoginHandlers;
+import com.leoneferito.auth.social.SocialLoginService;
 import com.leoneferito.common.error.ErrorResponse;
 // Jackson 3 부터 databind 패키지가 tools.jackson 으로 옮겨졌다.
 // 애너테이션(com.fasterxml.jackson.annotation)은 그대로라 둘이 섞여 보인다.
@@ -16,6 +18,7 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
@@ -67,7 +70,11 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http,
                                            SecurityContextRepository contextRepository,
-                                           ObjectMapper objectMapper) throws Exception {
+                                           ObjectMapper objectMapper,
+                                           SocialLoginService socialLoginService,
+                                           SocialLoginHandlers socialHandlers,
+                                           OAuth2AuthorizationRequestResolver authorizationRequestResolver)
+            throws Exception {
 
         /*
          * CSRF 토큰을 쿠키로 내려 주고 헤더로 돌려받는다 (XSRF-TOKEN → X-XSRF-TOKEN).
@@ -99,6 +106,21 @@ public class SecurityConfig {
                 .logout(logout -> logout.disable()) // 로그아웃도 우리 엔드포인트가 처리한다
 
                 /*
+                 * 간편 로그인 (카카오 · 네이버). 흐름은 전부 브라우저 리다이렉트다:
+                 *   /oauth2/authorization/{kakao|naver} → 제공자 로그인 → /login/oauth2/code/{…} → 프론트
+                 * 제공자가 준 사용자 정보를 회원으로 잇는 건 SocialLoginService,
+                 * 그 뒤 우리 세션에 담고 프론트로 돌려보내는 건 SocialLoginHandlers 가 한다.
+                 * 키가 없는 제공자는 등록이 없어서 시작 주소가 401 로 끝난다 — 사이트는 뜬다.
+                 */
+                .oauth2Login(oauth -> oauth
+                        // 꺼진 제공자의 시작 주소는 500 이 아니라 404 로 (SocialLoginConfig 참고)
+                        .authorizationEndpoint(endpoint ->
+                                endpoint.authorizationRequestResolver(authorizationRequestResolver))
+                        .userInfoEndpoint(user -> user.userService(socialLoginService))
+                        .successHandler(socialHandlers)
+                        .failureHandler(socialHandlers))
+
+                /*
                  * 세션은 필요할 때만 만든다. ALWAYS 로 두면 상품 목록을 한 번 보기만 해도
                  * 세션 행이 생겨서, 세션 테이블이 익명 방문자로 가득 찬다.
                  */
@@ -108,7 +130,10 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // 공개 영역
                         .requestMatchers(HttpMethod.GET, "/api/products", "/api/products/**").permitAll()
-                        .requestMatchers("/api/auth/signup", "/api/auth/login", "/api/auth/csrf").permitAll()
+                        .requestMatchers("/api/auth/signup", "/api/auth/login", "/api/auth/csrf",
+                                "/api/auth/social").permitAll()
+                        // 간편 로그인 시작·콜백. 인증 전에 오는 주소라 열어 둔다.
+                        .requestMatchers("/oauth2/authorization/*", "/login/oauth2/code/*").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                         /*
                          * 업로드된 이미지는 공개다. 상품 사진이라 손님이 봐야 한다.

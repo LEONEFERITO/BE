@@ -2,6 +2,7 @@ package com.leoneferito.auth.api;
 
 import com.leoneferito.auth.AuthService;
 import com.leoneferito.auth.MemberPrincipal;
+import com.leoneferito.auth.social.SocialLoginConfig;
 import com.leoneferito.member.Member;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -36,10 +37,25 @@ public class AuthController {
 
     private final AuthService authService;
     private final SecurityContextRepository contextRepository;
+    private final SocialLoginConfig.Enabled social;
 
-    public AuthController(AuthService authService, SecurityContextRepository contextRepository) {
+    public AuthController(AuthService authService, SecurityContextRepository contextRepository,
+                          SocialLoginConfig.Enabled social) {
         this.authService = authService;
         this.contextRepository = contextRepository;
+        this.social = social;
+    }
+
+    /**
+     * 켜진 간편가입 제공자.
+     *
+     * <p>키가 없는 제공자는 목록에 없다. 프론트는 있는 것만 버튼으로 그린다 —
+     * 눌러도 아무 일이 없는 버튼을 두지 않기 위해서다.
+     */
+    @GetMapping("/social")
+    public Map<String, List<String>> social() {
+        return Map.of("providers",
+                social.providers().stream().map(p -> p.registrationId).toList());
     }
 
     /**
