@@ -35,6 +35,8 @@ public final class MemberTestSupport {
         jdbc.update("DELETE FROM order_item");
         jdbc.update("DELETE FROM orders");
         jdbc.update("DELETE FROM cart_item");
+        jdbc.update("DELETE FROM notice");
+        jdbc.update("DELETE FROM faq");
         jdbc.update("DELETE FROM member_admin_log");
         jdbc.update("DELETE FROM password_reset_token");
         jdbc.update("DELETE FROM member");

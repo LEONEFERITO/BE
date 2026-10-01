@@ -100,7 +100,23 @@ public class AuthController {
                             HttpServletResponse httpResponse) {
 
         Member member = authService.login(request.email(), request.password());
+        return startSession(member, httpRequest, httpResponse);
+    }
 
+    /**
+     * 관리자 로그인 (/admin/login). 아이디 또는 이메일 + 비밀번호. 관리자가 아니면 일반 실패와 같은 답이다
+     * ({@link AuthService#adminLogin}). 세션은 일반 로그인과 같은 것이다 — 관리자용 세션을 따로 두지 않는다.
+     */
+    @PostMapping("/admin-login")
+    public MeResponse adminLogin(@Valid @RequestBody AuthRequests.AdminLogin request,
+                                 HttpServletRequest httpRequest,
+                                 HttpServletResponse httpResponse) {
+        Member member = authService.adminLogin(request.loginId(), request.password());
+        return startSession(member, httpRequest, httpResponse);
+    }
+
+    private MeResponse startSession(Member member, HttpServletRequest httpRequest,
+                                    HttpServletResponse httpResponse) {
         HttpSession existing = httpRequest.getSession(false);
         if (existing != null) {
             existing.invalidate();
@@ -116,7 +132,7 @@ public class AuthController {
         SecurityContextHolder.setContext(context);
         contextRepository.saveContext(context, httpRequest, httpResponse);
 
-        return MeResponse.from(principal);
+        return MeResponse.from(principal, member.isMustChangePassword());
     }
 
     /**
@@ -161,7 +177,8 @@ public class AuthController {
     /** 현재 로그인한 회원. 인증이 없으면 필터 단계에서 401 이 나간다. */
     @GetMapping("/me")
     public MeResponse me(Authentication authentication) {
-        return MeResponse.from((MemberPrincipal) authentication.getPrincipal());
+        MemberPrincipal principal = (MemberPrincipal) authentication.getPrincipal();
+        return MeResponse.from(principal, authService.mustChangePassword(principal.getId()));
     }
 
     /**
@@ -170,15 +187,17 @@ public class AuthController {
      * <p>이메일과 이름만 준다. 가입일·마지막 로그인 시각처럼 화면이 쓰지 않는 값은
      * 넣지 않는다 — 한 번 내보낸 필드는 없애기 어렵다.
      */
-    public record MeResponse(String email, String name, List<String> roles) {
+    /** mustChangePassword: 임시 비밀번호 — 화면이 비밀번호 변경으로 보낸다(관리자 API 는 그때까지 막힌다). */
+    public record MeResponse(String email, String name, List<String> roles, boolean mustChangePassword) {
 
-        static MeResponse from(MemberPrincipal principal) {
+        static MeResponse from(MemberPrincipal principal, boolean mustChangePassword) {
             return new MeResponse(
                     principal.getEmail(),
                     principal.getName(),
                     principal.getAuthorities().stream()
                             .map(a -> a.getAuthority())
-                            .toList());
+                            .toList(),
+                    mustChangePassword);
         }
     }
 }

@@ -14,7 +14,12 @@ import org.springframework.stereotype.Component;
  *   docker compose -f docker-compose.prod.yml run --rm api create-admin --email=ops@example.com --name=운영자 --role=SUPER_ADMIN
  *   # 로컬
  *   ./gradlew bootRun --args="create-admin --email=me@example.com --name=정재윤 --role=SUPER_ADMIN"
+ *   # 로컬 전용 — 아이디 로그인 + 임시 비밀번호 (첫 로그인 뒤 바꿔야 관리자 화면이 열린다)
+ *   ./gradlew bootRun --args="create-admin --login-id=masteradmin --temp-password=… --role=SUPER_ADMIN --server.port=0"
  * </pre>
+ *
+ * <p>임시 비밀번호는 <b>local 프로필에서만</b> 받는다. 운영에서 약한 비밀번호 관리자가 생기는 길을 막는다 —
+ * 운영 관리자는 위의 이메일 방식(비밀번호 설정 링크)으로 만든다.
  *
  * 없는 이메일이면 계정을 만들고 비밀번호 설정 링크(30분, 한 번)를 찍는다.
  * 이미 있는 계정이면 역할만 올린다. 이 명령이 SUPER_ADMIN 을 만드는 유일한 경로다.
@@ -26,10 +31,13 @@ public class CreateAdminCommand implements ApplicationRunner {
 
     private final AdminMemberService adminMembers;
     private final PasswordResetService passwordReset;
+    private final org.springframework.core.env.Environment environment;
 
-    public CreateAdminCommand(AdminMemberService adminMembers, PasswordResetService passwordReset) {
+    public CreateAdminCommand(AdminMemberService adminMembers, PasswordResetService passwordReset,
+                              org.springframework.core.env.Environment environment) {
         this.adminMembers = adminMembers;
         this.passwordReset = passwordReset;
+        this.environment = environment;
     }
 
     @Override
@@ -37,8 +45,12 @@ public class CreateAdminCommand implements ApplicationRunner {
         if (!args.getNonOptionArgs().contains(COMMAND)) {
             return;
         }
-        String email = required(args, "email");
         String role = required(args, "role");
+        if (args.containsOption("login-id")) {
+            createLocalLoginIdAdmin(args, role);
+            return;
+        }
+        String email = required(args, "email");
         String name = args.containsOption("name") ? required(args, "name") : "관리자";
 
         AdminMemberService.CommandResult result =
@@ -57,6 +69,23 @@ public class CreateAdminCommand implements ApplicationRunner {
             System.out.println("로그인돼 있던 세션은 끊었습니다. 다시 로그인하면 관리자 화면이 열립니다.");
             System.out.println();
         }
+    }
+
+    private void createLocalLoginIdAdmin(ApplicationArguments args, String role) {
+        if (!environment.matchesProfiles("local")) {
+            throw new IllegalStateException("--login-id · --temp-password 는 local 프로필에서만 쓸 수 있습니다.");
+        }
+        String loginId = required(args, "login-id");
+        String temporary = required(args, "temp-password");
+        String email = args.containsOption("email") ? required(args, "email") : null;
+        String name = args.containsOption("name") ? required(args, "name") : "마스터 관리자";
+        AdminMemberService.CommandResult result =
+                adminMembers.createWithLoginId(loginId, email, name, MemberRole.valueOf(role), temporary);
+        System.out.println();
+        System.out.println((result.created() ? "관리자 계정을 만들었습니다" : "기존 계정을 바꿨습니다")
+                + " (아이디 " + result.member().getLoginId() + ", " + role + ").");
+        System.out.println("/admin/login 에서 로그인한 뒤 비밀번호를 바꿔야 관리자 화면이 열립니다.");
+        System.out.println();
     }
 
     private static String required(ApplicationArguments args, String name) {

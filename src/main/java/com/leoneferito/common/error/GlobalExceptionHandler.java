@@ -231,6 +231,21 @@ public class GlobalExceptionHandler {
 		return ResponseEntity.badRequest().body(ErrorResponse.of("CART_INVALID", e.getMessage(), currentTraceId()));
 	}
 
+	/** 정렬하려는 목록이 그 사이 바뀌었다 (다른 관리자가 추가·삭제). 409. */
+	@ExceptionHandler(StaleListException.class)
+	public ResponseEntity<ErrorResponse> handleStaleList(StaleListException e) {
+		return ResponseEntity.status(HttpStatus.CONFLICT)
+				.body(ErrorResponse.of("STALE_LIST", e.getMessage(), currentTraceId()));
+	}
+
+	/** 임시 비밀번호 관리자 — 비밀번호를 바꾸기 전에는 관리자 API 를 못 쓴다. 403. */
+	@ExceptionHandler(com.leoneferito.auth.AdminPasswordGate.PasswordChangeRequiredException.class)
+	public ResponseEntity<ErrorResponse> handlePasswordChangeRequired(
+			com.leoneferito.auth.AdminPasswordGate.PasswordChangeRequiredException e) {
+		return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ErrorResponse.of("PASSWORD_CHANGE_REQUIRED",
+				"임시 비밀번호입니다. 비밀번호를 바꾼 뒤 이용해 주세요.", currentTraceId()));
+	}
+
 	/** 교환·반품 신청이 규칙에 맞지 않는다 (기간 · 수량 · 사이즈). 손님이 고칠 수 있게 문구를 그대로 보낸다. */
 	@ExceptionHandler(com.leoneferito.order.ReturnService.ReturnException.class)
 	public ResponseEntity<ErrorResponse> handleReturn(com.leoneferito.order.ReturnService.ReturnException e) {

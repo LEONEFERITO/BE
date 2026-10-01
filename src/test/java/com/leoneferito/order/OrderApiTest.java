@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -811,6 +812,68 @@ class OrderApiTest {
             webhook("{\"eventType\":\"PAYMENT_STATUS_CHANGED\",\"data\":{\"paymentKey\":\"../../v1/x\"}}")
                     .andExpect(status().isOk());
             assertThat(TOSS_CALLS).isEmpty();
+        }
+    }
+
+    // ── 통계 · 진열 순서 ────────────────────────────────────────
+
+    @Nested
+    @DisplayName("관리자 통계 · 진열 순서")
+    class Insights {
+
+        @Test
+        @DisplayName("사이즈별: 교환으로 나간 사이즈와 들어온 사이즈가 '남은 수' 에 반영된다. 취소 주문은 세지 않는다")
+        void sizeStats() throws Exception {
+            Cookie admin = login(mockMvc, ADMIN, PASSWORD);
+            String no = deliveredOrder(admin);
+            String id = returnId(requestReturn(no, "EXCHANGE", "SIZE", firstItemId(no), 1, "95"));
+            send(admin, post("/api/admin/returns/" + id + "/approve"), "{}").andExpect(status().isNoContent());
+            send(admin, post("/api/admin/returns/" + id + "/collected"), "{}").andExpect(status().isNoContent());
+            send(admin, post("/api/admin/returns/" + id + "/reship"), "{\"courier\":\"CJ대한통운\",\"trackingNumber\":\"9\"}")
+                    .andExpect(status().isNoContent());
+            // 취소된 주문 — 통계에서 빠져야 한다
+            String cancelled = paidOrder();
+            send(buyer, post("/api/orders/" + cancelled + "/cancel"), null).andExpect(status().isOk());
+
+            String res = mockMvc.perform(get("/api/admin/stats/sizes").param("days", "30").cookie(admin))
+                    .andExpect(status().isOk())
+                    .andReturn().getResponse().getContentAsString();
+            assertThat(JsonPath.<Integer>read(res, "$.products.length()")).isEqualTo(1);
+            assertThat(JsonPath.<String>read(res, "$.products[0].productName")).isEqualTo("브라운 셔츠");
+            assertThat(JsonPath.<Integer>read(res, "$.products[0].sold")).isEqualTo(1);
+            // 95 가 100 보다 앞 (사이즈 순서)
+            assertThat(JsonPath.<String>read(res, "$.products[0].sizes[0].size")).isEqualTo("95");
+            assertThat(JsonPath.<Integer>read(res, "$.products[0].sizes[0].kept")).isEqualTo(1);
+            assertThat(JsonPath.<Integer>read(res, "$.products[0].sizes[0].exchangedIn")).isEqualTo(1);
+            assertThat(JsonPath.<String>read(res, "$.products[0].sizes[1].size")).isEqualTo("100");
+            assertThat(JsonPath.<Integer>read(res, "$.products[0].sizes[1].exchangedOut")).isEqualTo(1);
+            assertThat(JsonPath.<Integer>read(res, "$.products[0].sizes[1].kept")).isZero();
+        }
+
+        @Test
+        @DisplayName("진열 순서는 공개 상품 전부를 보내야 바뀌고, 손님 목록 순서가 그대로 따른다")
+        void reorder() throws Exception {
+            Cookie admin = login(mockMvc, ADMIN, PASSWORD);
+            String list = mockMvc.perform(get("/api/products")).andReturn().getResponse().getContentAsString();
+            List<String> slugs = JsonPath.read(list, "$[*].slug");
+            assertThat(slugs).contains("ot-shirt", "ot-trousers");
+            List<String> ids = JsonPath.read(mockMvc.perform(get("/api/admin/products").cookie(admin))
+                    .andReturn().getResponse().getContentAsString(), "$[?(@.status == 'PUBLISHED')].id");
+            String trousers = products.findAll().stream().filter(p -> p.getSlug().equals("ot-trousers"))
+                    .findFirst().orElseThrow().getId().toString();
+
+            send(admin, put("/api/admin/products/order"), "{\"ids\":[\"%s\"]}".formatted(trousers))
+                    .andExpect(status().isConflict());
+
+            List<String> wanted = new java.util.ArrayList<>(ids);
+            wanted.remove(trousers);
+            wanted.addFirst(trousers);
+            send(admin, put("/api/admin/products/order"), "{\"ids\":[%s]}".formatted(
+                    String.join(",", wanted.stream().map(i -> "\"" + i + "\"").toList())))
+                    .andExpect(status().isNoContent());
+            List<String> after = JsonPath.read(mockMvc.perform(get("/api/products"))
+                    .andReturn().getResponse().getContentAsString(), "$[*].slug");
+            assertThat(after.getFirst()).isEqualTo("ot-trousers");
         }
     }
 }

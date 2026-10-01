@@ -43,6 +43,12 @@ public final class AuthRequests {
             @NotBlank @Size(max = 1000) String password) {
     }
 
+    /** 관리자 로그인 — 아이디(login_id) 또는 이메일. */
+    public record AdminLogin(
+            @NotBlank @Size(max = 254) String loginId,
+            @NotBlank @Size(max = 1000) String password) {
+    }
+
     /** 비밀번호 찾기 — 메일 요청. 가입 여부와 상관없이 같은 답을 한다. */
     public record PasswordResetRequest(@NotBlank @Email @Size(max = 254) String email) {
     }

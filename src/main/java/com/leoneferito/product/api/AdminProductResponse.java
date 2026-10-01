@@ -19,7 +19,8 @@ public final class AdminProductResponse {
             Long priceKrw,
             String mainImageUrl,
             List<String> missingForPublish,
-            Instant updatedAt) {
+            Instant updatedAt,
+            /* 진열 순서 (메인 구성) — 작을수록 앞 */ int displayOrder) {
     }
     public record Edit(
             UUID id,

@@ -96,6 +96,26 @@ public class AdminProductService {
         log.info("상품 비공개 전환 productId={}", id);
     }
 
+    /**
+     * 진열 순서 (메인 구성). 공개 상품을 이 순서로 손님 화면에 놓는다 — 메인 첫 화면은 앞에서부터
+     * 사진이 있는 4개, 제품 목록도 이 순서다. 화면이 보낸 목록은 지금 공개 상품 전부와 같아야 한다.
+     */
+    @Transactional
+    public void reorderPublished(java.util.List<UUID> ids) {
+        java.util.List<Product> published = products.findPublished();
+        if (ids.size() != published.size() || !new java.util.HashSet<>(ids).equals(
+                published.stream().map(Product::getId).collect(java.util.stream.Collectors.toSet()))) {
+            throw new com.leoneferito.common.error.StaleListException();
+        }
+        java.util.Map<UUID, Product> byId = published.stream()
+                .collect(java.util.stream.Collectors.toMap(Product::getId, p -> p));
+        for (int i = 0; i < ids.size(); i++) {
+            byId.get(ids.get(i)).setDisplayOrder((i + 1) * 10);
+        }
+        log.info("진열 순서 변경 count={}", ids.size());
+        events.publishEvent(new FrontRebuildTrigger.CatalogChanged("진열 순서"));
+    }
+
     private void apply(Product product, AdminProductRequests.Save request) {
         product.setName(request.name());
         product.setSummary(request.summary());

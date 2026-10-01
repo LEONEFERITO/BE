@@ -107,6 +107,14 @@ public class Member {
     @Column(name = "withdrawn_at")
     private Instant withdrawnAt;
 
+    /** 관리자 아이디 로그인용 (V15). 서버 명령으로만 붙는다. */
+    @Column(name = "login_id")
+    private String loginId;
+
+    /** 임시 비밀번호 계정. 바꾸기 전에는 관리자 API 가 막힌다 (AdminPasswordGate). */
+    @Column(name = "must_change_password", nullable = false)
+    private boolean mustChangePassword;
+
     protected Member() {
         // JPA
     }
@@ -183,8 +191,28 @@ public class Member {
         lastLoginAt = now;
     }
 
+    /** 비밀번호를 바꾼다. 임시 비밀번호 표시도 함께 지운다 — 본인이 정한 비밀번호가 됐다. */
     public void changePassword(String newPasswordHash) {
         this.passwordHash = Objects.requireNonNull(newPasswordHash, "passwordHash");
+        this.mustChangePassword = false;
+    }
+
+    /** 임시 비밀번호. 첫 로그인 뒤 바꾸기 전까지 관리자 API 가 막힌다. 서버 명령(로컬)만 쓴다. */
+    void setTemporaryPassword(String passwordHash) {
+        this.passwordHash = Objects.requireNonNull(passwordHash, "passwordHash");
+        this.mustChangePassword = true;
+    }
+
+    void assignLoginId(String loginId) {
+        this.loginId = loginId;
+    }
+
+    public String getLoginId() {
+        return loginId;
+    }
+
+    public boolean isMustChangePassword() {
+        return mustChangePassword;
     }
 
     /**

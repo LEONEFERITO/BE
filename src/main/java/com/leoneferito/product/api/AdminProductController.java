@@ -78,6 +78,17 @@ public class AdminProductController {
         return ResponseEntity.noContent().build();
     }
 
+    /** 진열 순서 (메인 구성) — 공개 상품 id 를 보여 줄 순서대로. */
+    @PutMapping("/order")
+    public ResponseEntity<Void> reorder(@jakarta.validation.Valid @RequestBody Reorder request) {
+        service.reorderPublished(request.ids());
+        return ResponseEntity.noContent().build();
+    }
+
+    public record Reorder(@jakarta.validation.constraints.NotNull
+                          @jakarta.validation.constraints.Size(max = 500) java.util.List<UUID> ids) {
+    }
+
     @PostMapping("/{id}/publish")
     public ResponseEntity<Void> publish(@PathVariable UUID id) {
         service.publish(id);

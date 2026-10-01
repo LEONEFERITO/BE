@@ -93,9 +93,37 @@ public class AuthService {
      */
     public Member login(String rawEmail, String rawPassword) {
         String email = Member.normalizeEmail(rawEmail);
+        return authenticate(members.findByEmail(email), rawPassword);
+    }
+
+    /**
+     * 관리자 로그인 (/admin/login). 아이디(login_id) 또는 이메일로 받는다.
+     *
+     * <p>비밀번호가 맞아도 관리자가 아니면 <b>같은 "아이디 또는 비밀번호가 맞지 않습니다"</b> 로 답하고
+     * 세션을 만들지 않는다. "관리자가 아닙니다" 라고 답하면 그 계정의 비밀번호가 맞았다는 게 샌다.
+     * 잠금 · 실패 기록 · 정지 규칙은 일반 로그인과 같다.
+     */
+    public Member adminLogin(String rawIdentifier, String rawPassword) {
+        String id = rawIdentifier == null ? "" : rawIdentifier.trim().toLowerCase(java.util.Locale.ROOT);
+        Optional<Member> found = id.contains("@") ? members.findByEmail(Member.normalizeEmail(id))
+                : members.findByLoginId(id);
+        Member member = authenticate(found, rawPassword);
+        if (!member.getRole().isAdmin()) {
+            log.info("관리자 로그인 거절 — 관리자 아님 memberId={}", member.getId());
+            throw new AuthenticationFailedException(Reason.INVALID_CREDENTIALS);
+        }
+        return member;
+    }
+
+    /** 관리자가 비밀번호를 바꿔야 하는 상태인가 (임시 비밀번호). 화면이 변경 화면으로 보낼지 정한다. */
+    public boolean mustChangePassword(java.util.UUID memberId) {
+        return members.findById(memberId).map(Member::isMustChangePassword).orElse(false);
+    }
+
+    private Member authenticate(Optional<Member> candidate, String rawPassword) {
         Instant now = Instant.now();
 
-        Optional<Member> found = members.findByEmail(email)
+        Optional<Member> found = candidate
                 .filter(m -> !m.isWithdrawn()); // 탈퇴 계정은 없는 것과 같다
 
         if (found.isEmpty()) {

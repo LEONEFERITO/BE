@@ -44,7 +44,8 @@ public class AdminProductQueryService {
                 p.getPriceKrw(),
                 p.mainImage().map(i -> mediaUrls.urlFor(i.getMedia())).orElse(null),
                 p.missingForPublish(),
-                p.getUpdatedAt());
+                p.getUpdatedAt(),
+                p.getDisplayOrder());
     }
 
     private AdminProductResponse.Edit toEdit(Product p) {

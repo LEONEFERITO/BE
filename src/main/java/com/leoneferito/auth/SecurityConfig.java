@@ -165,7 +165,9 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // 공개 영역
                         .requestMatchers(HttpMethod.GET, "/api/products", "/api/products/**").permitAll()
-                        .requestMatchers("/api/auth/signup", "/api/auth/login", "/api/auth/csrf",
+                        // 공지 · FAQ — 손님이 로그인 없이 읽는다 (공개된 것만 나간다)
+                        .requestMatchers(HttpMethod.GET, "/api/notices", "/api/notices/*", "/api/faqs").permitAll()
+                        .requestMatchers("/api/auth/signup", "/api/auth/login", "/api/auth/admin-login", "/api/auth/csrf",
                                 "/api/auth/social", "/api/auth/password-reset/**").permitAll()
                         // 간편 로그인 시작·콜백. 인증 전에 오는 주소라 열어 둔다.
                         .requestMatchers("/oauth2/authorization/*", "/login/oauth2/code/*").permitAll()
