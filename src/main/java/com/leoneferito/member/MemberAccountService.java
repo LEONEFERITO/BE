@@ -5,6 +5,8 @@ import com.leoneferito.auth.PasswordPolicy;
 import com.leoneferito.auth.SessionTerminator;
 import com.leoneferito.common.error.ResourceNotFoundException;
 import com.leoneferito.order.OrderStatus;
+import com.leoneferito.order.ReturnRequestRepository;
+import com.leoneferito.order.ReturnStatus;
 import com.leoneferito.order.ShopOrderRepository;
 import java.util.EnumSet;
 import java.time.Instant;
@@ -32,16 +34,19 @@ public class MemberAccountService {
     private final SessionTerminator sessionTerminator;
     private final LoginAttemptRecorder attempts;
     private final ShopOrderRepository orders;
+    private final ReturnRequestRepository returns;
 
     public MemberAccountService(MemberRepository members, PasswordEncoder passwordEncoder,
                                 PasswordPolicy passwordPolicy, SessionTerminator sessionTerminator,
-                                LoginAttemptRecorder attempts, ShopOrderRepository orders) {
+                                LoginAttemptRecorder attempts, ShopOrderRepository orders,
+                                ReturnRequestRepository returns) {
         this.members = members;
         this.passwordEncoder = passwordEncoder;
         this.passwordPolicy = passwordPolicy;
         this.sessionTerminator = sessionTerminator;
         this.attempts = attempts;
         this.orders = orders;
+        this.returns = returns;
     }
 
     @Transactional(readOnly = true)
@@ -93,7 +98,8 @@ public class MemberAccountService {
             verifyPassword(member, password);
         }
         if (orders.existsByMemberIdAndStatusIn(member.getId(),
-                EnumSet.of(OrderStatus.PAID, OrderStatus.IN_PRODUCTION, OrderStatus.SHIPPED))) {
+                EnumSet.of(OrderStatus.PAID, OrderStatus.IN_PRODUCTION, OrderStatus.SHIPPED))
+                || returns.existsByMemberIdAndStatusIn(member.getId(), ReturnStatus.ACTIVE)) {
             throw new OrdersInProgressException();
         }
 

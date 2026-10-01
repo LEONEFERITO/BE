@@ -68,6 +68,8 @@ class OrderApiTest {
     }
 
     static final List<TossCall> TOSS_CALLS = new CopyOnWriteArrayList<>();
+    /** 결제 조회(GET) 에 돌려줄 답 — 웹훅 테스트가 "토스가 실제로 알고 있는 결제" 를 심는다. */
+    static final java.util.Map<String, String> TOSS_PAYMENTS = new java.util.concurrent.ConcurrentHashMap<>();
     static final HttpServer TOSS;
 
     static {
@@ -84,7 +86,11 @@ class OrderApiTest {
                     exchange.getRequestHeaders().getFirst("Authorization")));
             String json;
             int status = 200;
-            if (path.endsWith("/confirm")) {
+            if ("GET".equals(exchange.getRequestMethod())) {
+                String found = TOSS_PAYMENTS.get(path.substring(path.lastIndexOf('/') + 1));
+                status = found == null ? 404 : 200;
+                json = found == null ? "{\"code\":\"NOT_FOUND_PAYMENT\",\"message\":\"없음\"}" : found;
+            } else if (path.endsWith("/confirm")) {
                 String paymentKey = JsonPath.read(body, "$.paymentKey");
                 if (paymentKey.startsWith("slow")) {
                     // 동시 승인 테스트용 — 응답을 늦춰 두 요청이 겹치게 만든다.
@@ -158,6 +164,7 @@ class OrderApiTest {
     void setUp() throws Exception {
         cleanUp();
         TOSS_CALLS.clear();
+        TOSS_PAYMENTS.clear();
         buyerId = authService.signup(BUYER, PASSWORD, "김구매", "010-1111-2222");
         authService.signup(OTHER, PASSWORD, "남의사람", null);
         authService.signup(ADMIN, PASSWORD, "운영자", null);
@@ -535,6 +542,275 @@ class OrderApiTest {
                     .andExpect(jsonPath("$.items[0].orderNumber").value(orderNumber));
             mockMvc.perform(get("/api/admin/orders").param("q", "김구매").cookie(admin))
                     .andExpect(jsonPath("$.totalElements").value(1));
+        }
+    }
+
+    // ── 교환 · 반품 ─────────────────────────────────────────────
+
+    /** 결제 → 발송 → 배송 완료까지 간 주문. */
+    private String deliveredOrder(Cookie admin) throws Exception {
+        String no = paidOrder();
+        send(admin, post("/api/admin/orders/" + no + "/ship"), "{\"courier\":\"CJ대한통운\",\"trackingNumber\":\"111\"}")
+                .andExpect(status().isNoContent());
+        send(admin, post("/api/admin/orders/" + no + "/deliver"), null).andExpect(status().isNoContent());
+        return no;
+    }
+
+    private String firstItemId(String orderNumber) throws Exception {
+        String res = mockMvc.perform(get("/api/orders/" + orderNumber).cookie(buyer))
+                .andReturn().getResponse().getContentAsString();
+        return JsonPath.read(res, "$.items[0].id");
+    }
+
+    private ResultActions requestReturn(String orderNumber, String type, String reason, String itemId, int qty,
+                                        String size) throws Exception {
+        return send(buyer, post("/api/orders/" + orderNumber + "/returns"), """
+                {"type":"%s","reason":"%s","detail":"어깨가 낍니다","items":[{"orderItemId":"%s","quantity":%d%s}]}
+                """.formatted(type, reason, itemId, qty, size == null ? "" : ",\"exchangeSize\":\"" + size + "\""));
+    }
+
+    private String returnId(ResultActions created) throws Exception {
+        return JsonPath.read(created.andReturn().getResponse().getContentAsString(), "$.id");
+    }
+
+    @Nested
+    @DisplayName("교환 · 반품")
+    class Returns {
+
+        private Cookie admin;
+
+        @BeforeEach
+        void admin() throws Exception {
+            admin = login(mockMvc, ADMIN, PASSWORD);
+        }
+
+        @Test
+        @DisplayName("배송이 끝나기 전에는 신청할 수 없고, 주문 상세도 '신청 불가' 다")
+        void onlyAfterDelivery() throws Exception {
+            String no = paidOrder();
+            mockMvc.perform(get("/api/orders/" + no).cookie(buyer))
+                    .andExpect(jsonPath("$.returnable").value(false))
+                    .andExpect(jsonPath("$.returns.length()").value(0));
+            requestReturn(no, "RETURN", "SIZE", firstItemId(no), 1, null)
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value("ORDER_STATE"));
+        }
+
+        @Test
+        @DisplayName("신청하면 주문 상세에 붙고, 진행 중에는 또 신청할 수 없다")
+        void requestShowsOnOrder() throws Exception {
+            String no = deliveredOrder(admin);
+            mockMvc.perform(get("/api/orders/" + no).cookie(buyer))
+                    .andExpect(jsonPath("$.returnable").value(true))
+                    .andExpect(jsonPath("$.changeOfMindDeadline").isNotEmpty());
+
+            requestReturn(no, "EXCHANGE", "SIZE", firstItemId(no), 1, "95")
+                    .andExpect(status().isCreated())
+                    .andExpect(jsonPath("$.status").value("REQUESTED"))
+                    .andExpect(jsonPath("$.items[0].size").value("100"))
+                    .andExpect(jsonPath("$.items[0].exchangeSize").value("95"))
+                    .andExpect(jsonPath("$.withdrawable").value(true));
+
+            mockMvc.perform(get("/api/orders/" + no).cookie(buyer))
+                    .andExpect(jsonPath("$.returnable").value(false))
+                    .andExpect(jsonPath("$.returns[0].type").value("EXCHANGE"));
+            requestReturn(no, "RETURN", "SIZE", firstItemId(no), 1, null).andExpect(status().isConflict());
+        }
+
+        @Test
+        @DisplayName("수량 초과 · 없는 교환 사이즈 · 남의 주문은 받지 않는다")
+        void rules() throws Exception {
+            String no = deliveredOrder(admin);
+            String item = firstItemId(no);
+            requestReturn(no, "RETURN", "SIZE", item, 2, null)
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("RETURN_INVALID"));
+            requestReturn(no, "EXCHANGE", "SIZE", item, 1, "999")
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("RETURN_INVALID"));
+            requestReturn(no, "EXCHANGE", "SIZE", item, 1, null).andExpect(status().isBadRequest());
+
+            Cookie other = login(mockMvc, OTHER, PASSWORD);
+            send(other, post("/api/orders/" + no + "/returns"), """
+                    {"type":"RETURN","reason":"SIZE","items":[{"orderItemId":"%s","quantity":1}]}
+                    """.formatted(item)).andExpect(status().isNotFound());
+        }
+
+        @Test
+        @DisplayName("단순 변심은 배송 완료 7일, 불량은 3개월 — 기간이 지나면 사유에 따라 갈린다")
+        void deadlines() throws Exception {
+            String no = deliveredOrder(admin);
+            jdbc.update("UPDATE orders SET delivered_at = now() - interval '10 days' WHERE order_number = ?", no);
+            requestReturn(no, "RETURN", "CHANGE_OF_MIND", firstItemId(no), 1, null)
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("RETURN_INVALID"));
+            requestReturn(no, "RETURN", "DEFECT", firstItemId(no), 1, null).andExpect(status().isCreated());
+        }
+
+        @Test
+        @DisplayName("반품: 승인 → 회수 → 환불. 토스 부분 취소가 그 금액으로 한 번 나가고 주문 환불액에 쌓인다")
+        void returnFlow() throws Exception {
+            String no = deliveredOrder(admin);
+            String id = returnId(requestReturn(no, "RETURN", "DEFECT", firstItemId(no), 1, null));
+
+            // 회수 전에 환불하면 토스를 부르지 않고 거절한다
+            send(admin, post("/api/admin/returns/" + id + "/refund"), "{\"refundAmountKrw\":100000}")
+                    .andExpect(status().isConflict());
+            assertThat(tossCalls("/cancel")).isZero();
+
+            send(admin, post("/api/admin/returns/" + id + "/approve"), "{\"note\":\"기사님이 이틀 안에 찾아갑니다\"}")
+                    .andExpect(status().isNoContent());
+            send(admin, post("/api/admin/returns/" + id + "/collected"), "{}").andExpect(status().isNoContent());
+
+            // 결제 금액(293,000)을 넘는 환불은 토스에 가기 전에 막는다
+            send(admin, post("/api/admin/returns/" + id + "/refund"), "{\"refundAmountKrw\":293001}")
+                    .andExpect(status().isBadRequest());
+            assertThat(tossCalls("/cancel")).isZero();
+
+            send(admin, post("/api/admin/returns/" + id + "/refund"), "{\"refundAmountKrw\":290000}")
+                    .andExpect(status().isNoContent());
+            assertThat(tossCalls("/cancel")).isEqualTo(1);
+            TossCall cancel = TOSS_CALLS.stream().filter(c -> c.path().endsWith("/cancel")).findFirst().orElseThrow();
+            assertThat(((Number) JsonPath.read(cancel.body(), "$.cancelAmount")).longValue()).isEqualTo(290_000L);
+            assertThat(cancel.idempotencyKey()).isEqualTo("return-" + id);
+            // 한 벌짜리 주문을 다 돌려받았으니 더 신청할 것이 없다
+            mockMvc.perform(get("/api/orders/" + no).cookie(buyer)).andExpect(jsonPath("$.returnable").value(false));
+
+            mockMvc.perform(get("/api/orders/" + no).cookie(buyer))
+                    .andExpect(jsonPath("$.refundedAmountKrw").value(290_000))
+                    .andExpect(jsonPath("$.returns[0].status").value("COMPLETED"))
+                    .andExpect(jsonPath("$.returns[0].adminNote").value("기사님이 이틀 안에 찾아갑니다"))
+                    .andExpect(jsonPath("$.returns[0].refundAmountKrw").value(290_000));
+
+            // 다시 눌러도 두 번 환불되지 않는다
+            send(admin, post("/api/admin/returns/" + id + "/refund"), "{\"refundAmountKrw\":3000}")
+                    .andExpect(status().isConflict());
+            assertThat(tossCalls("/cancel")).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("교환: 회수 뒤 송장을 넣으면 완료. 교환 신청에는 환불이 없다")
+        void exchangeFlow() throws Exception {
+            String no = deliveredOrder(admin);
+            String id = returnId(requestReturn(no, "EXCHANGE", "SIZE", firstItemId(no), 1, "95"));
+            send(admin, post("/api/admin/returns/" + id + "/approve"), "{}").andExpect(status().isNoContent());
+            send(admin, post("/api/admin/returns/" + id + "/collected"), "{}").andExpect(status().isNoContent());
+            send(admin, post("/api/admin/returns/" + id + "/refund"), "{\"refundAmountKrw\":1000}")
+                    .andExpect(status().isConflict());
+            send(admin, post("/api/admin/returns/" + id + "/reship"), "{\"courier\":\"CJ대한통운\",\"trackingNumber\":\"222\"}")
+                    .andExpect(status().isNoContent());
+
+            mockMvc.perform(get("/api/admin/returns/" + id).cookie(admin))
+                    .andExpect(jsonPath("$.request.status").value("COMPLETED"))
+                    .andExpect(jsonPath("$.request.reshipTrackingNumber").value("222"))
+                    .andExpect(jsonPath("$.events.length()").value(4));
+            assertThat(tossCalls("/cancel")).isZero();
+        }
+
+        @Test
+        @DisplayName("승인 전에는 손님이 철회하고 다시 신청할 수 있다. 승인 뒤에는 철회할 수 없다")
+        void withdraw() throws Exception {
+            String no = deliveredOrder(admin);
+            String first = returnId(requestReturn(no, "RETURN", "SIZE", firstItemId(no), 1, null));
+            send(buyer, post("/api/returns/" + first + "/withdraw"), null)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value("WITHDRAWN"));
+
+            String second = returnId(requestReturn(no, "RETURN", "SIZE", firstItemId(no), 1, null)
+                    .andExpect(status().isCreated()));
+            send(admin, post("/api/admin/returns/" + second + "/approve"), "{}").andExpect(status().isNoContent());
+            send(buyer, post("/api/returns/" + second + "/withdraw"), null).andExpect(status().isConflict());
+
+            Cookie other = login(mockMvc, OTHER, PASSWORD);
+            send(other, post("/api/returns/" + second + "/withdraw"), null).andExpect(status().isNotFound());
+        }
+
+        @Test
+        @DisplayName("거절하면 사유가 손님에게 보이고, 진행 중인 교환·반품이 있으면 탈퇴할 수 없다")
+        void rejectAndWithdrawal() throws Exception {
+            String no = deliveredOrder(admin);
+            String id = returnId(requestReturn(no, "RETURN", "CHANGE_OF_MIND", firstItemId(no), 1, null));
+
+            send(buyer, post("/api/me/withdraw"), "{\"password\":\"%s\"}".formatted(PASSWORD))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value("ORDERS_IN_PROGRESS"));
+
+            send(admin, post("/api/admin/returns/" + id + "/reject"), "{\"reason\":\"착용 흔적이 있습니다\"}")
+                    .andExpect(status().isNoContent());
+            mockMvc.perform(get("/api/orders/" + no).cookie(buyer))
+                    .andExpect(jsonPath("$.returns[0].status").value("REJECTED"))
+                    .andExpect(jsonPath("$.returns[0].rejectReason").value("착용 흔적이 있습니다"))
+                    .andExpect(jsonPath("$.returnable").value(true));
+        }
+
+        @Test
+        @DisplayName("관리자 목록: '처리할 것' 은 끝나지 않은 신청만, 손님은 관리자 API 를 못 쓴다")
+        void adminList() throws Exception {
+            String no = deliveredOrder(admin);
+            requestReturn(no, "RETURN", "SIZE", firstItemId(no), 1, null).andExpect(status().isCreated());
+            mockMvc.perform(get("/api/admin/returns").param("open", "true").cookie(admin))
+                    .andExpect(jsonPath("$.totalElements").value(1))
+                    .andExpect(jsonPath("$.items[0].orderNumber").value(no))
+                    .andExpect(jsonPath("$.items[0].recipientName").value("김구매"));
+            mockMvc.perform(get("/api/admin/returns").param("status", "COMPLETED").cookie(admin))
+                    .andExpect(jsonPath("$.totalElements").value(0));
+            mockMvc.perform(get("/api/admin/returns").cookie(buyer)).andExpect(status().isForbidden());
+        }
+    }
+
+    // ── 토스 웹훅 ───────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("토스 웹훅")
+    class Webhook {
+
+        private ResultActions webhook(String body) throws Exception {
+            // 토스 서버가 보낸다 — 쿠키도 CSRF 토큰도 없다
+            return mockMvc.perform(post("/api/payments/toss/webhook")
+                    .contentType(MediaType.APPLICATION_JSON).content(body));
+        }
+
+        private void tossKnows(String paymentKey, String orderId, long amount) {
+            TOSS_PAYMENTS.put(paymentKey, """
+                    {"paymentKey":"%s","orderId":"%s","status":"DONE","method":"카드","totalAmount":%d,
+                     "balanceAmount":%d,"approvedAt":"2026-10-01T12:00:00+09:00"}
+                    """.formatted(paymentKey, orderId, amount, amount));
+        }
+
+        @Test
+        @DisplayName("승인 응답을 놓친 주문을 토스에 다시 물어 결제 완료로 맞춘다")
+        void recoversLostConfirm() throws Exception {
+            Object[] o = createOrder(addToCart("ot-shirt", "100", 1));
+            tossKnows("pk_lost", (String) o[0], (long) o[1]);
+
+            webhook("{\"eventType\":\"PAYMENT_STATUS_CHANGED\",\"data\":{\"paymentKey\":\"pk_lost\",\"status\":\"DONE\"}}")
+                    .andExpect(status().isOk());
+
+            mockMvc.perform(get("/api/orders/" + o[0]).cookie(buyer))
+                    .andExpect(jsonPath("$.status").value("PAID"));
+            assertThat(tossCalls("/confirm")).isZero();
+        }
+
+        @Test
+        @DisplayName("본문을 믿지 않는다 — 토스가 아는 금액이 다르면 결제로 바꾸지 않는다")
+        void doesNotTrustBody() throws Exception {
+            Object[] o = createOrder(addToCart("ot-shirt", "100", 1));
+            tossKnows("pk_cheap", (String) o[0], 100);
+
+            webhook("{\"eventType\":\"PAYMENT_STATUS_CHANGED\",\"data\":{\"paymentKey\":\"pk_cheap\",\"totalAmount\":%d}}"
+                    .formatted((long) o[1])).andExpect(status().isOk());
+
+            assertThat(jdbc.queryForObject("SELECT status FROM orders WHERE order_number = ?", String.class, o[0]))
+                    .isEqualTo("PENDING_PAYMENT");
+        }
+
+        @Test
+        @DisplayName("다른 이벤트 · 이상한 결제 키는 토스를 부르지 않고 넘긴다")
+        void ignoresOthers() throws Exception {
+            webhook("{\"eventType\":\"DEPOSIT_CALLBACK\",\"data\":{\"paymentKey\":\"pk_x\"}}").andExpect(status().isOk());
+            webhook("{\"eventType\":\"PAYMENT_STATUS_CHANGED\",\"data\":{\"paymentKey\":\"../../v1/x\"}}")
+                    .andExpect(status().isOk());
+            assertThat(TOSS_CALLS).isEmpty();
         }
     }
 }

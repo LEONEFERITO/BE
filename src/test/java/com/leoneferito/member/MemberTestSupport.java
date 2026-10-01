@@ -28,6 +28,9 @@ public final class MemberTestSupport {
     public static void cleanDatabase(JdbcTemplate jdbc) {
         jdbc.update("DELETE FROM spring_session");
         // 주문·장바구니가 회원을 참조한다 (V13). 주문은 운영에서는 지우지 않지만 테스트는 매번 비운다.
+        jdbc.update("DELETE FROM return_event");
+        jdbc.update("DELETE FROM return_request_item");
+        jdbc.update("DELETE FROM return_request");
         jdbc.update("DELETE FROM order_event");
         jdbc.update("DELETE FROM order_item");
         jdbc.update("DELETE FROM orders");

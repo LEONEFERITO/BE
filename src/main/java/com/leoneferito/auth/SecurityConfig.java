@@ -129,7 +129,10 @@ public class SecurityConfig {
                 .cors(org.springframework.security.config.Customizer.withDefaults())
                 .csrf(csrf -> csrf
                         .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
-                        .csrfTokenRequestHandler(csrfHandler))
+                        .csrfTokenRequestHandler(csrfHandler)
+                        // 토스 웹훅은 브라우저가 아니라 토스 서버가 보낸다 — 쿠키도 CSRF 토큰도 없다.
+                        // 본문을 믿지 않고 결제 키로 토스에 다시 물어 맞추므로(OrderService.reconcile) 위조해도 얻을 게 없다.
+                        .ignoringRequestMatchers("/api/payments/toss/webhook"))
 
                 // 폼 로그인·HTTP Basic 을 쓰지 않는다. 우리는 JSON API 다.
                 // 끄지 않으면 인증 실패 시 로그인 HTML 페이지로 리다이렉트된다.
@@ -167,6 +170,7 @@ public class SecurityConfig {
                         // 간편 로그인 시작·콜백. 인증 전에 오는 주소라 열어 둔다.
                         .requestMatchers("/oauth2/authorization/*", "/login/oauth2/code/*").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/payments/toss/webhook").permitAll()
                         /*
                          * 업로드된 이미지는 공개다. 상품 사진이라 손님이 봐야 한다.
                          * 대신 주소가 UUID 라 추측할 수 없고, 서빙 쪽이 nosniff 를 붙인다.

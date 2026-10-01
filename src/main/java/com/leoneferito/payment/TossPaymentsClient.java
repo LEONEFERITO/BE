@@ -65,6 +65,33 @@ public class TossPaymentsClient {
                 Map.of("cancelReason", reason));
     }
 
+    /** 결제 조회. 웹훅 본문 대신 이 값을 믿는다 — 시크릿 키로 토스에 직접 물은 답이다. */
+    public Payment fetch(String paymentKey) {
+        requireReady();
+        try {
+            return http.get()
+                    .uri("/v1/payments/{paymentKey}", paymentKey)
+                    .retrieve()
+                    .onStatus(HttpStatusCode::isError, (req, res) -> {
+                        TossError err = readError(res.getBody());
+                        throw new PaymentException(err.code(), err.message());
+                    })
+                    .body(Payment.class);
+        } catch (PaymentException e) {
+            throw e;
+        } catch (RestClientException e) {
+            log.error("토스 결제 조회 실패", e);
+            throw new PaymentException("NETWORK", "결제사와 연결하지 못했습니다.");
+        }
+    }
+
+    /** 부분 취소 (반품 환불). cancelAmount 만큼만 돌려준다 — 토스가 남은 금액을 넘으면 거절한다. */
+    public Payment cancel(String paymentKey, String reason, String idempotencyKey, long cancelAmount) {
+        requireReady();
+        return call("/v1/payments/" + paymentKey + "/cancel", idempotencyKey,
+                Map.of("cancelReason", reason, "cancelAmount", cancelAmount));
+    }
+
     private Payment call(String path, String idempotencyKey, Map<String, Object> body) {
         try {
             return http.post()

@@ -2,6 +2,7 @@ package com.leoneferito.order.api;
 
 import com.leoneferito.auth.MemberPrincipal;
 import com.leoneferito.order.OrderService;
+import com.leoneferito.order.ReturnService;
 import com.leoneferito.order.ShopOrder;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
@@ -29,9 +30,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class OrderController {
 
     private final OrderService orders;
+    private final ReturnService returns;
 
-    public OrderController(OrderService orders) {
+    public OrderController(OrderService orders, ReturnService returns) {
         this.orders = orders;
+        this.returns = returns;
     }
 
     /** 결제를 받을 수 있는가 (토스 키 · 배송비 정책). 주문서 화면이 결제 버튼을 열지 정한다. */
@@ -83,7 +86,8 @@ public class OrderController {
     @GetMapping("/{orderNumber}")
     public OrderResponse.Detail detail(@AuthenticationPrincipal MemberPrincipal me,
                                        @PathVariable String orderNumber) {
-        return OrderResponse.Detail.of(orders.myOrder(me.getId(), orderNumber));
+        ShopOrder order = orders.myOrder(me.getId(), orderNumber);
+        return OrderResponse.Detail.of(order, returns.forOrder(order));
     }
 
     private static String blankToNull(String s) {

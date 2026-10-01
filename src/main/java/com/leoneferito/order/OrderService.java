@@ -42,8 +42,9 @@ import org.springframework.transaction.annotation.Transactional;
  * 토스 키가 없거나 배송비 정책이 없으면 주문서를 만들지 않는다. 결제할 수 없는 주문서가 쌓이거나,
  * 지어낸 배송비가 결제되는 것보다 낫다.
  *
- * <p>TODO 토스 웹훅으로 승인 결과를 한 번 더 맞춘다 — 승인은 됐는데 우리 커밋이 실패하는 경우를 대비해.
- * 그때까지는 그 경우 에러 로그에 결제 키가 남는다.
+ * <h2>웹훅으로 한 번 더 맞춘다 ({@link #reconcile})</h2>
+ * 토스는 승인했는데 우리 저장이 실패하는 경우(승인 직후 서버가 죽는 등)를 위해서다. 웹훅 본문은 믿지 않고
+ * 결제 키로 토스에 다시 물어 맞춘다.
  */
 @Service
 public class OrderService {
@@ -199,6 +200,46 @@ public class OrderService {
 
         log.info("결제 완료 orderNumber={} method={}", orderNumber, payment.method());
         return loaded(order);
+    }
+
+    /**
+     * 토스 웹훅 (결제 상태 변경). 본문은 믿지 않는다 — 결제 키로 토스에 직접 조회한 값만 쓴다.
+     *
+     * <ul>
+     *   <li>토스는 DONE 인데 우리는 결제 전 → 결제 완료로 맞춘다 (금액이 같을 때만).</li>
+     *   <li>그 밖에 어긋나면(토스 상점관리자에서 직접 취소 등) 고치지 않고 로그를 남긴다 — 사람이 본다.
+     *       돈의 상태를 웹훅 하나로 자동으로 되돌리면, 잘못된 판단 하나가 환불 사고가 된다.</li>
+     * </ul>
+     */
+    @Transactional
+    public void reconcile(String paymentKey) {
+        TossPaymentsClient.Payment p = toss.fetch(paymentKey);
+        if (p.orderId() == null) {
+            return;
+        }
+        ShopOrder order = orders.findByOrderNumberForUpdate(p.orderId()).orElse(null);
+        if (order == null) {
+            log.warn("웹훅: 우리 주문이 아님 orderId={}", p.orderId());
+            return;
+        }
+        if ("DONE".equals(p.status()) && order.getStatus() == OrderStatus.PENDING_PAYMENT) {
+            if (p.totalAmount() == null || p.totalAmount() != order.getTotalAmountKrw()) {
+                log.error("웹훅: 결제 금액 불일치 orderNumber={} paymentKey={} amount={}",
+                        order.getOrderNumber(), paymentKey, p.totalAmount());
+                return;
+            }
+            order.markPaid(paymentKey, p.method(),
+                    p.approvedAt() == null ? Instant.now() : p.approvedAt().toInstant());
+            log.warn("웹훅으로 결제 반영 orderNumber={} — 승인 응답을 놓친 주문", order.getOrderNumber());
+            return;
+        }
+        boolean tossCancelled = "CANCELED".equals(p.status()) || "PARTIAL_CANCELED".equals(p.status());
+        long tossRefunded = p.totalAmount() == null || p.balanceAmount() == null ? 0
+                : p.totalAmount() - p.balanceAmount();
+        if (tossCancelled && tossRefunded != order.getRefundedAmountKrw()) {
+            log.error("웹훅: 환불액 불일치 — 사람이 확인 orderNumber={} toss={} ours={}",
+                    order.getOrderNumber(), tossRefunded, order.getRefundedAmountKrw());
+        }
     }
 
     /** 손님 취소. 결제 직후 · 제작 시작 전에만. 토스 환불이 먼저 성공해야 상태를 바꾼다. */

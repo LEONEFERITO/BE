@@ -196,6 +196,19 @@ public class ShopOrder {
         transition(OrderStatus.CANCELLED, actorId, reason);
     }
 
+    /** 부분 환불 기록 (반품). 토스 부분 취소는 부르는 쪽이 먼저 성공시킨다. 결제 금액을 넘을 수 없다. */
+    void recordRefund(long amount) {
+        if (amount <= 0 || amount > refundableKrw()) {
+            throw new OrderStateException("환불할 수 있는 금액을 넘습니다. 남은 금액: " + refundableKrw() + "원");
+        }
+        this.refundedAmountKrw += amount;
+    }
+
+    /** 아직 환불하지 않은 결제 금액. */
+    public long refundableKrw() {
+        return totalAmountKrw - refundedAmountKrw;
+    }
+
     private void require(OrderStatus expected) {
         if (status != expected) {
             throw new OrderStateException("지금 상태(" + status + ")에서는 할 수 없습니다.");

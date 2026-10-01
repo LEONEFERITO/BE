@@ -3,9 +3,12 @@ package com.leoneferito.order.api;
 import com.leoneferito.order.OrderEvent;
 import com.leoneferito.order.OrderItem;
 import com.leoneferito.order.OrderStatus;
+import com.leoneferito.order.ReturnRequest;
+import com.leoneferito.order.ReturnService;
 import com.leoneferito.order.ShopOrder;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * 주문 응답. 손님과 관리자가 같은 모양을 쓰되, 관리자 쪽에만 결제 키 같은 내부 값이 붙는다.
@@ -33,11 +36,12 @@ public final class OrderResponse {
         }
     }
 
-    public record Item(String slug, String name, String imageUrl, String size, long unitPriceKrw,
+    /** id: 교환·반품을 신청할 때 어느 줄인지 가리키는 값. */
+    public record Item(UUID id, String slug, String name, String imageUrl, String size, long unitPriceKrw,
                        int quantity, long lineAmountKrw, int leadTimeDays) {
 
         static Item of(OrderItem i) {
-            return new Item(i.getProductSlug(), i.getProductName(), i.getImageUrl(), i.getSize(),
+            return new Item(i.getId(), i.getProductSlug(), i.getProductName(), i.getImageUrl(), i.getSize(),
                     i.getUnitPriceKrw(), i.getQuantity(), i.getLineAmountKrw(), i.getLeadTimeDays());
         }
     }
@@ -52,7 +56,11 @@ public final class OrderResponse {
         }
     }
 
-    /** cancellable: 손님이 지금 직접 취소할 수 있는가 (결제 완료 · 제작 전). */
+    /**
+     * cancellable: 손님이 지금 직접 취소할 수 있는가 (결제 완료 · 제작 전).
+     * returnable: 지금 교환·반품을 신청할 수 있는가 (배송 완료 · 기간 안 · 진행 중인 신청 없음).
+     * 두 기한은 그 사유로 신청할 수 있는 마지막 순간(그 시각 전까지)이다 — 배송 완료 전이면 null.
+     */
     public record Detail(String orderNumber, OrderStatus status, String orderName,
                          long itemsAmountKrw, long shippingFeeKrw, long totalAmountKrw, long refundedAmountKrw,
                          List<Item> items, Recipient recipient,
@@ -60,9 +68,16 @@ public final class OrderResponse {
                          String courier, String trackingNumber, Instant shippedAt, Instant deliveredAt,
                          Instant cancelledAt, String cancelReason,
                          Instant createdAt, List<Event> events,
-                         boolean cancellable) {
+                         boolean cancellable,
+                         List<ReturnResponse.View> returns, boolean returnable,
+                         Instant changeOfMindDeadline, Instant sellerFaultDeadline) {
 
+        /** 교환·반품 내역 없이 (결제 승인 · 취소 응답). */
         public static Detail of(ShopOrder o) {
+            return of(o, new ReturnService.ForOrder(List.of(), false, null, null));
+        }
+
+        public static Detail of(ShopOrder o, ReturnService.ForOrder r) {
             return new Detail(o.getOrderNumber(), o.getStatus(), o.getOrderName(),
                     o.getItemsAmountKrw(), o.getShippingFeeKrw(), o.getTotalAmountKrw(), o.getRefundedAmountKrw(),
                     o.getItems().stream().map(Item::of).toList(),
@@ -72,7 +87,9 @@ public final class OrderResponse {
                     o.getCourier(), o.getTrackingNumber(), o.getShippedAt(), o.getDeliveredAt(),
                     o.getCancelledAt(), o.getCancelReason(),
                     o.getCreatedAt(), o.getEvents().stream().map(Event::of).toList(),
-                    o.getStatus().customerCancellable());
+                    o.getStatus().customerCancellable(),
+                    r.requests().stream().map(ReturnResponse.View::of).toList(), r.requestable(),
+                    r.changeOfMindDeadline(), r.sellerFaultDeadline());
         }
     }
 
@@ -95,7 +112,8 @@ public final class OrderResponse {
     }
 
     /** 관리자 상세 — 손님 상세 + 결제 키(토스 상점관리자에서 찾을 때) + 이력의 처리 주체. */
-    public record AdminDetail(Detail order, String paymentKey, Instant agreedAt, List<AdminEvent> events) {
+    public record AdminDetail(Detail order, String paymentKey, Instant agreedAt, List<AdminEvent> events,
+                              List<ReturnResponse.View> returns) {
     }
 
     public record AdminEvent(OrderStatus from, OrderStatus to, String note, boolean byAdmin, Instant at) {
@@ -105,8 +123,9 @@ public final class OrderResponse {
         }
     }
 
-    static AdminDetail adminDetail(ShopOrder o) {
+    static AdminDetail adminDetail(ShopOrder o, List<ReturnRequest> returns) {
         return new AdminDetail(Detail.of(o), o.getPaymentKey(), o.getAgreedAt(),
-                o.getEvents().stream().map(AdminEvent::of).toList());
+                o.getEvents().stream().map(AdminEvent::of).toList(),
+                returns.stream().map(ReturnResponse.View::of).toList());
     }
 }

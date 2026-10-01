@@ -88,6 +88,11 @@ app:
     shipping-fee-krw: ${ORDER_SHIPPING_FEE_KRW:}
     # 이 금액 이상이면 배송비 0원. 비어 있으면 무료 배송 없음.
     free-shipping-threshold-krw: ${ORDER_FREE_SHIPPING_THRESHOLD_KRW:}
+  returns:
+    # 교환·반품 신청 기간 (배송 완료일 다음 날부터). 기본값은 전자상거래법 제17조의 최소 기간이다 —
+    # 이보다 짧게 넣어도 코드가 최소값으로 올린다(ReturnPolicy). TODO(고객확인) 더 길게 받을지.
+    change-of-mind-days: ${RETURNS_CHANGE_OF_MIND_DAYS:7}
+    seller-fault-months: ${RETURNS_SELLER_FAULT_MONTHS:3}
   payment:
     toss:
       # 토스페이먼츠 시크릿 키 (test_sk_… / live_sk_…). 비어 있으면 결제를 열지 않는다. 비밀값 — 로그에 찍지 않는다.

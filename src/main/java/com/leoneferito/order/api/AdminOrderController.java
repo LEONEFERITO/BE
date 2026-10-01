@@ -2,6 +2,8 @@ package com.leoneferito.order.api;
 
 import com.leoneferito.auth.MemberPrincipal;
 import com.leoneferito.order.AdminOrderService;
+import com.leoneferito.order.AdminReturnService;
+import com.leoneferito.order.ShopOrder;
 import com.leoneferito.order.OrderStatus;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -22,9 +24,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminOrderController {
 
     private final AdminOrderService service;
+    private final AdminReturnService returns;
 
-    public AdminOrderController(AdminOrderService service) {
+    public AdminOrderController(AdminOrderService service, AdminReturnService returns) {
         this.service = service;
+        this.returns = returns;
     }
 
     @GetMapping
@@ -36,7 +40,8 @@ public class AdminOrderController {
 
     @GetMapping("/{orderNumber}")
     public OrderResponse.AdminDetail detail(@PathVariable String orderNumber) {
-        return OrderResponse.adminDetail(service.detail(orderNumber));
+        ShopOrder order = service.detail(orderNumber);
+        return OrderResponse.adminDetail(order, returns.forOrder(order.getId()));
     }
 
     @PostMapping("/{orderNumber}/start-production")

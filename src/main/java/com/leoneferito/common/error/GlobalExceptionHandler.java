@@ -231,6 +231,12 @@ public class GlobalExceptionHandler {
 		return ResponseEntity.badRequest().body(ErrorResponse.of("CART_INVALID", e.getMessage(), currentTraceId()));
 	}
 
+	/** 교환·반품 신청이 규칙에 맞지 않는다 (기간 · 수량 · 사이즈). 손님이 고칠 수 있게 문구를 그대로 보낸다. */
+	@ExceptionHandler(com.leoneferito.order.ReturnService.ReturnException.class)
+	public ResponseEntity<ErrorResponse> handleReturn(com.leoneferito.order.ReturnService.ReturnException e) {
+		return ResponseEntity.badRequest().body(ErrorResponse.of("RETURN_INVALID", e.getMessage(), currentTraceId()));
+	}
+
 	/** 지금 주문 상태에서 할 수 없는 일 (제작 중인 주문 취소 등). 409. */
 	@ExceptionHandler(com.leoneferito.order.ShopOrder.OrderStateException.class)
 	public ResponseEntity<ErrorResponse> handleOrderState(com.leoneferito.order.ShopOrder.OrderStateException e) {
@@ -272,7 +278,7 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(com.leoneferito.member.MemberAccountService.OrdersInProgressException.class)
 	public ResponseEntity<ErrorResponse> handleOrdersInProgress(com.leoneferito.member.MemberAccountService.OrdersInProgressException e) {
 		return ResponseEntity.status(HttpStatus.CONFLICT).body(ErrorResponse.of("ORDERS_IN_PROGRESS",
-				"진행 중인 주문이 있어 탈퇴할 수 없습니다. 배송이 끝난 뒤 다시 시도해 주세요.", currentTraceId()));
+				"진행 중인 주문이나 교환·반품이 있어 탈퇴할 수 없습니다. 끝난 뒤 다시 시도해 주세요.", currentTraceId()));
 	}
 
 	/**
