@@ -40,6 +40,15 @@ public class OrderController {
         return Map.of("paymentReady", orders.paymentReady());
     }
 
+    /** 주문서 화면의 금액. 고른 장바구니 줄로 서버가 계산한다 (주문서 작성과 같은 계산). */
+    @PostMapping("/quote")
+    public OrderService.Quote quote(@AuthenticationPrincipal MemberPrincipal me, @Valid @RequestBody QuoteRequest request) {
+        return orders.quote(me.getId(), request.cartItemIds());
+    }
+
+    public record QuoteRequest(@NotEmpty @Size(max = 50) List<UUID> cartItemIds) {
+    }
+
     @PostMapping
     public ResponseEntity<OrderResponse.Created> create(@AuthenticationPrincipal MemberPrincipal me,
                                                         @Valid @RequestBody Create request) {

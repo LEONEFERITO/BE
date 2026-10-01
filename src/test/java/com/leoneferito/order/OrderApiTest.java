@@ -86,6 +86,14 @@ class OrderApiTest {
             int status = 200;
             if (path.endsWith("/confirm")) {
                 String paymentKey = JsonPath.read(body, "$.paymentKey");
+                if (paymentKey.startsWith("slow")) {
+                    // 동시 승인 테스트용 — 응답을 늦춰 두 요청이 겹치게 만든다.
+                    try {
+                        Thread.sleep(400);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
                 if (paymentKey.startsWith("reject")) {
                     status = 400;
                     json = "{\"code\":\"REJECT_CARD_COMPANY\",\"message\":\"카드사에서 거절했습니다.\"}";
@@ -308,6 +316,21 @@ class OrderApiTest {
         }
 
         @Test
+        @DisplayName("주문서 화면의 금액(quote)과 실제 결제 금액이 같다 — 고른 줄만으로 계산한다")
+        void quoteMatchesOrder() throws Exception {
+            String trousers = addToCart("ot-trousers", "30", 1);
+            addToCart("ot-shirt", "100", 2); // 장바구니에는 있지만 이번 주문에는 안 고른다
+            String quote = send(buyer, post("/api/orders/quote"), "{\"cartItemIds\":[\"" + trousers + "\"]}")
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.itemsAmountKrw").value(180_000))
+                    .andExpect(jsonPath("$.shippingFeeKrw").value(3_000))
+                    .andExpect(jsonPath("$.longestLeadTimeDays").value(14))
+                    .andReturn().getResponse().getContentAsString();
+            Object[] o = createOrder(trousers);
+            assertThat(((Number) JsonPath.read(quote, "$.totalAmountKrw")).longValue()).isEqualTo((long) o[1]);
+        }
+
+        @Test
         @DisplayName("결제 전 확인(agree) 없이는 주문서를 만들 수 없다")
         void agreeRequired() throws Exception {
             String id = addToCart("ot-shirt", "100", 1);
@@ -356,6 +379,21 @@ class OrderApiTest {
             Object[] o = createOrder(addToCart("ot-shirt", "100", 1));
             confirm((String) o[0], "pk_twice", (long) o[1]).andExpect(status().isOk());
             confirm((String) o[0], "pk_twice", (long) o[1]).andExpect(status().isOk());
+            assertThat(tossCalls("/confirm")).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("승인 요청이 동시에 두 번 와도(더블클릭 · 새로고침) 토스 승인은 한 번이고 둘 다 결제 완료를 받는다")
+        void concurrentConfirm() throws Exception {
+            Object[] o = createOrder(addToCart("ot-shirt", "100", 1));
+            java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+            java.util.concurrent.Callable<Integer> call = () -> confirm((String) o[0], "slow_pk", (long) o[1])
+                    .andReturn().getResponse().getStatus();
+            var a = pool.submit(call);
+            var b = pool.submit(call);
+            assertThat(a.get()).isEqualTo(200);
+            assertThat(b.get()).isEqualTo(200);
+            pool.shutdown();
             assertThat(tossCalls("/confirm")).isEqualTo(1);
         }
 

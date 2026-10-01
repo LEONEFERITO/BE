@@ -78,7 +78,9 @@ public class AdminOrderService {
     /** 취소 + 전액 환불. 발송 전(결제 완료 · 제작 중)에만. 발송 뒤에는 반품 절차로 간다. */
     @Transactional
     public void cancel(UUID actorId, String orderNumber, String reason) {
-        ShopOrder order = find(orderNumber);
+        // 잠그고 읽는다 — 손님 취소와 관리자 취소가 동시에 오면 환불이 두 번 나갈 수 있다.
+        ShopOrder order = orders.findByOrderNumberForUpdate(orderNumber)
+                .orElseThrow(() -> new ResourceNotFoundException("주문 없음 orderNumber=" + orderNumber));
         if (!order.getStatus().adminCancellable()) {
             throw new ShopOrder.OrderStateException(
                     "발송 전 주문만 취소할 수 있습니다. 발송된 주문은 반품으로 처리해 주세요.");

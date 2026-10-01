@@ -14,6 +14,17 @@ public interface ShopOrderRepository extends JpaRepository<ShopOrder, UUID> {
 
     Optional<ShopOrder> findByOrderNumber(String orderNumber);
 
+    /**
+     * 결제 승인 · 취소용 — 행을 잠그고 읽는다(SELECT … FOR UPDATE).
+     *
+     * <p>성공 화면이 두 번 열리거나(새로고침 · 개발 모드) 버튼이 두 번 눌리면 승인 요청이 동시에 온다.
+     * 잠그지 않으면 둘 다 "아직 결제 전" 을 보고 토스에 두 번 승인을 요청한다. 잠그면 뒤에 온 쪽이
+     * 앞의 커밋을 기다렸다가 "이미 그 결제 키로 결제됨" 을 보고 그대로 돌려준다.
+     */
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT o FROM ShopOrder o WHERE o.orderNumber = :orderNumber")
+    Optional<ShopOrder> findByOrderNumberForUpdate(@Param("orderNumber") String orderNumber);
+
     /** 내 주문. 결제 전에 떠난 주문(PENDING_PAYMENT)은 빼고 부른다. */
     List<ShopOrder> findByMemberIdAndStatusInOrderByCreatedAtDesc(UUID memberId, Collection<OrderStatus> statuses);
 

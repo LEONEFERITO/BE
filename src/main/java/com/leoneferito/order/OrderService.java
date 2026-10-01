@@ -88,6 +88,33 @@ public class OrderService {
         if (!toss.isReady()) {
             throw new PaymentException("NOT_CONFIGURED", "결제 준비 중입니다.");
         }
+        Priced priced = price(memberId, cartItemIds);
+        ShopOrder order = ShopOrder.open(memberId, newOrderNumber(), priced.items(), priced.shippingFeeKrw(),
+                recipient, Instant.now());
+        orders.save(order);
+        log.info("주문서 작성 orderNumber={} total={}", order.getOrderNumber(), order.getTotalAmountKrw());
+        return order;
+    }
+
+    /**
+     * 주문서 화면의 금액 — 고른 줄만으로 계산한다(바로 구매는 한 줄). 주문서 작성과 <b>같은 계산</b>을 쓴다.
+     * 화면이 합계를 따로 더하면 결제 금액과 어긋나는 날이 온다.
+     */
+    @Transactional(readOnly = true)
+    public Quote quote(UUID memberId, List<UUID> cartItemIds) {
+        Priced p = price(memberId, cartItemIds);
+        long items = p.items().stream().mapToLong(OrderItem::getLineAmountKrw).sum();
+        return new Quote(items, p.shippingFeeKrw(), items + p.shippingFeeKrw(),
+                p.items().stream().mapToInt(OrderItem::getLeadTimeDays).max().orElse(0));
+    }
+
+    public record Quote(long itemsAmountKrw, long shippingFeeKrw, long totalAmountKrw, int longestLeadTimeDays) {
+    }
+
+    private record Priced(List<OrderItem> items, long shippingFeeKrw) {
+    }
+
+    private Priced price(UUID memberId, List<UUID> cartItemIds) {
         if (cartItemIds == null || cartItemIds.isEmpty()) {
             throw new CartException("주문할 상품을 골라 주세요.");
         }
@@ -121,12 +148,7 @@ public class OrderService {
         if (fee.isEmpty()) {
             throw new ShippingPolicyPendingException();
         }
-
-        ShopOrder order = ShopOrder.open(memberId, newOrderNumber(), items, fee.getAsLong(),
-                recipient, Instant.now());
-        orders.save(order);
-        log.info("주문서 작성 orderNumber={} total={}", order.getOrderNumber(), order.getTotalAmountKrw());
-        return order;
+        return new Priced(items, fee.getAsLong());
     }
 
     /**
@@ -136,7 +158,7 @@ public class OrderService {
      */
     @Transactional
     public ShopOrder confirm(UUID memberId, String orderNumber, String paymentKey, long amount) {
-        ShopOrder order = mine(memberId, orderNumber);
+        ShopOrder order = mineLocked(memberId, orderNumber);
 
         if (order.getStatus() != OrderStatus.PENDING_PAYMENT) {
             if (paymentKey.equals(order.getPaymentKey())) {
@@ -182,7 +204,7 @@ public class OrderService {
     /** 손님 취소. 결제 직후 · 제작 시작 전에만. 토스 환불이 먼저 성공해야 상태를 바꾼다. */
     @Transactional
     public ShopOrder cancelByCustomer(UUID memberId, String orderNumber) {
-        ShopOrder order = mine(memberId, orderNumber);
+        ShopOrder order = mineLocked(memberId, orderNumber);
         if (!order.getStatus().customerCancellable()) {
             throw new ShopOrder.OrderStateException(
                     "제작이 시작된 주문은 직접 취소할 수 없습니다. 고객센터로 문의해 주세요.");
@@ -226,6 +248,13 @@ public class OrderService {
     /** 내 주문만 찾는다. 남의 주문번호면 "없다" 와 같은 답 — 번호가 존재한다는 것도 새면 안 된다. */
     private ShopOrder mine(UUID memberId, String orderNumber) {
         return orders.findByOrderNumber(orderNumber)
+                .filter(o -> o.isOwnedBy(memberId))
+                .orElseThrow(() -> new ResourceNotFoundException("주문 없음 orderNumber=" + orderNumber));
+    }
+
+    /** 승인 · 취소용 — 행을 잠그고 찾는다 (ShopOrderRepository.findByOrderNumberForUpdate). */
+    private ShopOrder mineLocked(UUID memberId, String orderNumber) {
+        return orders.findByOrderNumberForUpdate(orderNumber)
                 .filter(o -> o.isOwnedBy(memberId))
                 .orElseThrow(() -> new ResourceNotFoundException("주문 없음 orderNumber=" + orderNumber));
     }
