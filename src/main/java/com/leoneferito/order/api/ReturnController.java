@@ -40,7 +40,8 @@ public class ReturnController {
         var created = returns.request(me.getId(), orderNumber, request.type(), request.reason(), request.detail(),
                 request.items().stream()
                         .map(i -> new ReturnService.Line(i.orderItemId(), i.quantity(), i.exchangeSize()))
-                        .toList());
+                        .toList(),
+                request.photoIds());
         return ResponseEntity.status(HttpStatus.CREATED).body(ReturnResponse.View.of(created));
     }
 
@@ -49,9 +50,11 @@ public class ReturnController {
         return ReturnResponse.View.of(returns.withdraw(me.getId(), id));
     }
 
+    /** photoIds: 먼저 올린 사진(POST /api/returns/photos)의 id. 없어도 된다. */
     public record Create(@NotNull ReturnType type, @NotNull ReturnReason reason,
                          @Size(max = 1000) String detail,
-                         @NotEmpty @Size(max = 50) List<@Valid Line> items) {
+                         @NotEmpty @Size(max = 50) List<@Valid Line> items,
+                         @Size(max = 5) List<UUID> photoIds) {
     }
 
     public record Line(@NotNull UUID orderItemId, @Min(1) @Max(10) int quantity, @Size(max = 20) String exchangeSize) {

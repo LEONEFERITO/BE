@@ -84,6 +84,11 @@ public class ReturnRequest {
     @OrderBy("id ASC")
     private List<ReturnEvent> events = new ArrayList<>();
 
+    /** 손님이 붙인 사진 (불량 · 오배송 증거). 붙이는 건 ReturnPhotoService 가 한다. */
+    @OneToMany(mappedBy = "request")
+    @OrderBy("createdAt ASC")
+    private List<ReturnPhoto> photos = new ArrayList<>();
+
     protected ReturnRequest() {
         // JPA
     }
@@ -185,6 +190,12 @@ public class ReturnRequest {
         return this.memberId.equals(memberId);
     }
 
+    /** 사진을 붙인다. 양쪽(사진의 신청 · 신청의 사진 목록)을 같이 맞춰야 같은 트랜잭션의 응답에도 보인다. */
+    void addPhoto(ReturnPhoto photo) {
+        photo.attachTo(this);
+        photos.add(photo);
+    }
+
     public UUID getId() {
         return id;
     }
@@ -243,5 +254,9 @@ public class ReturnRequest {
 
     public List<ReturnEvent> getEvents() {
         return events;
+    }
+
+    public List<ReturnPhoto> getPhotos() {
+        return photos;
     }
 }

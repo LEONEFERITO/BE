@@ -32,13 +32,15 @@ public class ReturnService {
     private final ReturnRequestRepository returns;
     private final ProductRepository products;
     private final ReturnPolicy policy;
+    private final ReturnPhotoService photos;
 
     public ReturnService(ShopOrderRepository orders, ReturnRequestRepository returns, ProductRepository products,
-                         ReturnPolicy policy) {
+                         ReturnPolicy policy, ReturnPhotoService photos) {
         this.orders = orders;
         this.returns = returns;
         this.products = products;
         this.policy = policy;
+        this.photos = photos;
     }
 
     /** 신청할 한 줄. exchangeSize 는 교환일 때만 쓴다. */
@@ -47,7 +49,7 @@ public class ReturnService {
 
     @Transactional
     public ReturnRequest request(UUID memberId, String orderNumber, ReturnType type, ReturnReason reason,
-                                 String detail, List<Line> lines) {
+                                 String detail, List<Line> lines, List<UUID> photoIds) {
         // 주문 행을 잠근다 — 신청이 두 번 동시에 오면 둘 다 "진행 중 없음" 을 볼 수 있다.
         ShopOrder order = orders.findByOrderNumberForUpdate(orderNumber)
                 .filter(o -> o.isOwnedBy(memberId))
@@ -100,9 +102,10 @@ public class ReturnService {
             items.add(new ReturnItem(oi, line.quantity(), size));
         }
 
-        ReturnRequest created = ReturnRequest.open(order, type, reason,
-                detail == null || detail.isBlank() ? null : detail.trim(), items);
-        returns.save(created);
+        ReturnRequest created = returns.save(ReturnRequest.open(order, type, reason,
+                detail == null || detail.isBlank() ? null : detail.trim(), items));
+        // 저장해서 돌려받은 쪽에 붙인다 — id 를 미리 정한 엔티티라 save 가 merge 로 동작한다
+        photos.attach(memberId, photoIds, created);
         log.info("교환·반품 신청 orderNumber={} returnId={} type={} reason={}",
                 orderNumber, created.getId(), type, reason);
         return loaded(created);
@@ -158,6 +161,7 @@ public class ReturnService {
     static ReturnRequest loaded(ReturnRequest r) {
         r.getItems().forEach(i -> i.getOrderItem().getProductName());
         r.getEvents().size();
+        r.getPhotos().size();
         r.getOrder().getOrderNumber();
         return r;
     }

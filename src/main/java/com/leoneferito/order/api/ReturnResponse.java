@@ -2,6 +2,7 @@ package com.leoneferito.order.api;
 
 import com.leoneferito.order.ReturnEvent;
 import com.leoneferito.order.ReturnItem;
+import com.leoneferito.order.ReturnPhoto;
 import com.leoneferito.order.ReturnReason;
 import com.leoneferito.order.ReturnRequest;
 import com.leoneferito.order.ReturnStatus;
@@ -38,7 +39,8 @@ public final class ReturnResponse {
                        ReturnStatus status, String adminNote, String rejectReason, long refundAmountKrw,
                        String reshipCourier, String reshipTrackingNumber, Instant createdAt,
                        List<Item> items, List<Event> events,
-                       /* 손님이 지금 철회할 수 있는가 (승인 전) */ boolean withdrawable) {
+                       /* 손님이 지금 철회할 수 있는가 (승인 전) */ boolean withdrawable,
+                       /* 손님이 붙인 사진 주소 */ List<String> photoUrls) {
 
         public static View of(ReturnRequest r) {
             return new View(r.getId(), r.getOrder().getOrderNumber(), r.getType(), r.getReason(), r.getDetail(),
@@ -46,7 +48,8 @@ public final class ReturnResponse {
                     r.getReshipCourier(), r.getReshipTrackingNumber(), r.getCreatedAt(),
                     r.getItems().stream().map(Item::of).toList(),
                     r.getEvents().stream().map(Event::of).toList(),
-                    r.getStatus() == ReturnStatus.REQUESTED);
+                    r.getStatus() == ReturnStatus.REQUESTED,
+                    r.getPhotos().stream().map(ReturnPhoto::getUrl).toList());
         }
     }
 

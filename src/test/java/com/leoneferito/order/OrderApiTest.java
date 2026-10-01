@@ -744,6 +744,83 @@ class OrderApiTest {
                     .andExpect(jsonPath("$.returnable").value(true));
         }
 
+        private String csrfToken;
+
+        /**
+         * 실제 CSRF 토큰(쿠키 + 헤더). 스프링 시큐리티의 csrf() 테스트 도구를 쓰지 않는다 — 그건 필터의 저장소를
+         * 바꿔치기해서, 같은 테스트 안의 다른 요청(진짜 쿠키로 로그인)까지 403 으로 만든다.
+         */
+        private Cookie csrfCookie() throws Exception {
+            var res = mockMvc.perform(get("/api/auth/csrf")).andReturn().getResponse();
+            csrfToken = JsonPath.read(res.getContentAsString(), "$.token");
+            Cookie c = res.getCookie("XSRF-TOKEN");
+            return c == null ? new Cookie("XSRF-TOKEN", csrfToken) : c;
+        }
+
+        private String uploadPhoto(Cookie who, byte[] bytes) throws Exception {
+            String res = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                            .multipart("/api/returns/photos")
+                            .file(new org.springframework.mock.web.MockMultipartFile("file", "defect.png", "image/png", bytes))
+                            .cookie(who, csrfCookie())
+                            .header("X-XSRF-TOKEN", csrfToken))
+                    .andExpect(status().isCreated())
+                    .andExpect(jsonPath("$.url").isNotEmpty())
+                    .andReturn().getResponse().getContentAsString();
+            return JsonPath.read(res, "$.id");
+        }
+
+        private byte[] png() throws Exception {
+            var img = new java.awt.image.BufferedImage(40, 30, java.awt.image.BufferedImage.TYPE_INT_RGB);
+            var out = new java.io.ByteArrayOutputStream();
+            javax.imageio.ImageIO.write(img, "png", out);
+            return out.toByteArray();
+        }
+
+        private ResultActions requestWithPhotos(String orderNumber, String itemId, String... photoIds) throws Exception {
+            String ids = String.join(",", java.util.Arrays.stream(photoIds).map(i -> "\"" + i + "\"").toList());
+            return send(buyer, post("/api/orders/" + orderNumber + "/returns"), """
+                    {"type":"RETURN","reason":"DEFECT","detail":"단추가 떨어져 왔습니다",
+                     "items":[{"orderItemId":"%s","quantity":1}],"photoIds":[%s]}
+                    """.formatted(itemId, ids));
+        }
+
+        @Test
+        @DisplayName("사진: 먼저 올리고 신청에 붙인다. 남의 사진 · 이미 붙은 사진 · 이미지가 아닌 파일은 받지 않는다")
+        void photos() throws Exception {
+            String no = deliveredOrder(admin);
+            String item = firstItemId(no);
+
+            // 이미지가 아니면 올라가지 않는다
+            mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                            .multipart("/api/returns/photos")
+                            .file(new org.springframework.mock.web.MockMultipartFile("file", "x.png", "image/png",
+                                    "<html>not an image</html>".getBytes(StandardCharsets.UTF_8)))
+                            .cookie(buyer, csrfCookie())
+                            .header("X-XSRF-TOKEN", csrfToken))
+                    .andExpect(status().isBadRequest());
+
+            // 남이 올린 사진은 붙일 수 없다
+            Cookie other = login(mockMvc, OTHER, PASSWORD);
+            String othersPhoto = uploadPhoto(other, png());
+            requestWithPhotos(no, item, othersPhoto)
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("RETURN_INVALID"));
+
+            String mine = uploadPhoto(buyer, png());
+            String id = returnId(requestWithPhotos(no, item, mine)
+                    .andExpect(status().isCreated())
+                    .andExpect(jsonPath("$.photoUrls.length()").value(1)));
+            mockMvc.perform(get("/api/orders/" + no).cookie(buyer))
+                    .andExpect(jsonPath("$.returns[0].photoUrls.length()").value(1));
+            mockMvc.perform(get("/api/admin/returns/" + id).cookie(admin))
+                    .andExpect(jsonPath("$.request.photoUrls.length()").value(1));
+
+            // 철회 뒤 같은 사진을 다른 신청에 다시 붙일 수는 없다 — 새로 올린다
+            send(buyer, post("/api/returns/" + id + "/withdraw"), null).andExpect(status().isOk());
+            requestWithPhotos(no, item, mine).andExpect(status().isBadRequest());
+            requestWithPhotos(no, item, uploadPhoto(buyer, png())).andExpect(status().isCreated());
+        }
+
         @Test
         @DisplayName("관리자 목록: '처리할 것' 은 끝나지 않은 신청만, 손님은 관리자 API 를 못 쓴다")
         void adminList() throws Exception {
