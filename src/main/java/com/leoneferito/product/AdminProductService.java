@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,10 +28,13 @@ public class AdminProductService {
 
     private final ProductRepository products;
     private final MediaAssetRepository mediaAssets;
+    private final ApplicationEventPublisher events;
 
-    public AdminProductService(ProductRepository products, MediaAssetRepository mediaAssets) {
+    public AdminProductService(ProductRepository products, MediaAssetRepository mediaAssets,
+                               ApplicationEventPublisher events) {
         this.products = products;
         this.mediaAssets = mediaAssets;
+        this.events = events;
     }
 
     @Transactional
@@ -66,6 +70,11 @@ public class AdminProductService {
 
         apply(product, request);
         log.info("상품 수정 productId={}", id);
+
+        // 손님이 보고 있는 상품을 고쳤으면 손님 화면을 다시 만든다. 초안 수정은 화면에 없다.
+        if (product.getStatus() == ProductStatus.PUBLISHED) {
+            events.publishEvent(new FrontRebuildTrigger.CatalogChanged("공개 상품 수정"));
+        }
     }
 
     @Transactional
@@ -75,6 +84,7 @@ public class AdminProductService {
         // 무엇이 비었는지는 엔티티가 판단한다. 규칙이 두 곳에 있으면 한쪽만 바뀐다.
         product.publish();
         log.info("상품 공개 productId={}", id);
+        events.publishEvent(new FrontRebuildTrigger.CatalogChanged("상품 공개"));
     }
 
     @Transactional
@@ -82,6 +92,7 @@ public class AdminProductService {
         Product product = products.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("상품 없음: id=" + id));
         product.unpublish();
+        events.publishEvent(new FrontRebuildTrigger.CatalogChanged("상품 비공개"));
         log.info("상품 비공개 전환 productId={}", id);
     }
 
@@ -95,6 +106,8 @@ public class AdminProductService {
         product.setFeatures(request.features());
         product.setFabric(request.fabric());
         product.setCare(request.care());
+        product.setNotice(request.color(), request.manufacturer(),
+                request.countryOfOrigin(), request.manufacturedOn());
         product.setModel(request.modelHeightCm(), request.modelWeightKg(), request.modelSize());
         product.setLeadTimeDays(request.leadTimeDays());
         product.setInstagramUrl(request.instagramUrl());

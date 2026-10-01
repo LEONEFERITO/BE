@@ -30,6 +30,8 @@ public final class ProductResponse {
     public record Summary(
             String slug,
             String name,
+            /** 카드 아래 한 줄. 없으면 null. */
+            String summary,
             String category,
             String line,
             Long priceKrw,
@@ -41,6 +43,7 @@ public final class ProductResponse {
     public record Detail(
             String slug,
             String name,
+            String summary,
             String category,
             String line,
             Long priceKrw,
@@ -61,6 +64,8 @@ public final class ProductResponse {
             SizeChart sizeChart,
             /** 인스타그램 게시물 주소. 없으면 null — 화면이 버튼을 숨긴다. */
             String instagramUrl,
+            /** 상품정보제공고시 중 상품마다 다른 항목. 소재·세탁은 위 fabric·care. */
+            Notice notice,
             List<Image> images,
             List<Sku> skus) {
     }
@@ -75,6 +80,10 @@ public final class ProductResponse {
     }
 
     public record Image(String url, String kind, String alt) {
+    }
+
+    /** 상품정보제공고시 (V11). 공개된 상품은 넷 다 채워져 있다 (Product.hasNotice). */
+    public record Notice(String color, String manufacturer, String countryOfOrigin, String manufacturedOn) {
     }
 
     /** 피팅 모델 스펙. 실측만큼 중요한 판단 재료다. */

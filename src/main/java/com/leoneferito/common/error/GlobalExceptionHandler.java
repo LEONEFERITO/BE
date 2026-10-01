@@ -284,7 +284,7 @@ public class GlobalExceptionHandler {
 		log.warn("도메인 규칙 위반 traceId={} path={} reason={}", traceId, request.getRequestURI(), e.getMessage());
 		return ResponseEntity.status(HttpStatus.CONFLICT)
 				.body(ErrorResponse.of("NOT_READY",
-						"공개에 필요한 값이 비어 있습니다. 이름 · 가격 · 제작 기간 · 대표 이미지를 확인해 주세요.",
+						"공개에 필요한 값이 비어 있습니다. 이름 · 가격 · 제작 기간 · 대표 이미지 · 상품정보제공고시를 확인해 주세요.",
 						traceId));
 	}
 

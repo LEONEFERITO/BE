@@ -45,6 +45,8 @@ public final class AdminProductRequests {
     public static final int SIZE_CHART_ALT_MAX = 300;
     /** 인스타그램 게시물 주소. 실제 주소는 60자 안팎이다. 여유를 두되 문단은 못 들어오게. */
     public static final int INSTAGRAM_URL_MAX = 300;
+    /** 상품정보제공고시 한 줄 (색상 · 제조자 · 제조국 · 제조연월). DB CHECK(V11)와 같은 값. */
+    public static final int NOTICE_MAX = 100;
 
     public record Save(
             /*
@@ -72,6 +74,12 @@ public final class AdminProductRequests {
             @Size(max = BODY_MAX) String features,
             @Size(max = SHORT_BODY_MAX) String fabric,
             @Size(max = SHORT_BODY_MAX) String care,
+
+            // 상품정보제공고시 (V11). 한 줄짜리 값이라 100자.
+            @Size(max = NOTICE_MAX) String color,
+            @Size(max = NOTICE_MAX) String manufacturer,
+            @Size(max = NOTICE_MAX) String countryOfOrigin,
+            @Size(max = NOTICE_MAX) String manufacturedOn,
 
             @Min(100) @Max(250) Short modelHeightCm,
             @Min(30) @Max(200) Short modelWeightKg,

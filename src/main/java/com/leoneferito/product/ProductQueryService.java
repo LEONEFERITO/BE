@@ -60,6 +60,7 @@ public class ProductQueryService {
         return new ProductResponse.Summary(
                 p.getSlug(),
                 p.getName(),
+                p.getSummary(),
                 p.getCategory().name(),
                 p.getLine().name(),
                 p.getPriceKrw(),
@@ -71,6 +72,7 @@ public class ProductQueryService {
         return new ProductResponse.Detail(
                 p.getSlug(),
                 p.getName(),
+                p.getSummary(),
                 p.getCategory().name(),
                 p.getLine().name(),
                 p.getPriceKrw(),
@@ -84,6 +86,8 @@ public class ProductQueryService {
                 p.getLeadTimeDays(),
                 toSizeChart(p),
                 p.getInstagramUrl(),
+                new ProductResponse.Notice(p.getColor(), p.getManufacturer(),
+                        p.getCountryOfOrigin(), p.getManufacturedOn()),
                 p.getImages().stream()
                         .sorted(Comparator.comparingInt(ProductImage::getSortOrder))
                         .map(this::toImage)

@@ -352,9 +352,29 @@ class ProductDomainTest {
             p.setLeadTimeDays((short) 14);
             p.addImage(new ProductImage(UUID.randomUUID(), newMedia(),
                     ProductImageKind.MAIN, "대표", 0));
+            p.setFabric("면 100%");
+            p.setCare("드라이클리닝");
+            p.setNotice("브라운", "레오네페리토", "대한민국", "2026년 9월");
 
             p.publish();
             assertThat(p.getStatus()).isEqualTo(ProductStatus.PUBLISHED);
+        }
+
+        @Test
+        @DisplayName("상품정보제공고시가 하나라도 비면 공개할 수 없다 — 판매 전 법적 의무다")
+        void cannotPublishWithoutNotice() {
+            Product p = newProduct("no-notice", ProductCategory.SHIRT, ProductLine.FERITO);
+            p.setName("브라운 셔츠");
+            p.setPriceKrw(290_000L);
+            p.setLeadTimeDays((short) 14);
+            p.addImage(new ProductImage(UUID.randomUUID(), newMedia(),
+                    ProductImageKind.MAIN, "대표", 0));
+            p.setFabric("면 100%");
+            p.setCare("드라이클리닝");
+            p.setNotice("브라운", "레오네페리토", "  ", "2026년 9월"); // 제조국이 공백
+
+            assertThat(p.missingForPublish()).containsExactly("notice");
+            assertThat(p.isPublishable()).isFalse();
         }
     }
 }

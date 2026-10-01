@@ -85,6 +85,22 @@ public class Product {
     @Column
     private String care;
 
+    /*
+     * 상품정보제공고시 중 상품마다 다른 항목 (V11). 소재는 fabric, 세탁은 care 가 맡는다.
+     * 넷 다 있어야 공개할 수 있다 — 고시는 판매 전 의무다.
+     */
+    @Column
+    private String color;
+
+    @Column
+    private String manufacturer;
+
+    @Column(name = "country_of_origin")
+    private String countryOfOrigin;
+
+    @Column(name = "manufactured_on")
+    private String manufacturedOn;
+
     @Column(name = "model_height_cm")
     private Short modelHeightCm;
 
@@ -192,7 +208,21 @@ public class Product {
         if (priceKrw == null) missing.add("priceKrw");
         if (leadTimeDays == null) missing.add("leadTimeDays");
         if (mainImage().isEmpty()) missing.add("mainImage");
+        if (!hasNotice()) missing.add("notice");
         return missing;
+    }
+
+    /**
+     * 상품정보제공고시가 다 찼는가. 소재(fabric) · 세탁(care) · 색상 · 제조자 · 제조국 · 제조연월.
+     * 치수는 SKU 가, 품질보증기준과 A/S 연락처는 브랜드 공통 값이 채운다.
+     */
+    public boolean hasNotice() {
+        return filled(fabric) && filled(care) && filled(color) && filled(manufacturer)
+                && filled(countryOfOrigin) && filled(manufacturedOn);
+    }
+
+    private static boolean filled(String value) {
+        return value != null && !value.isBlank();
     }
 
     /** 판단만 한다. 상태를 바꾸지 않는다 — 공개는 사람이 하는 결정이다. */
@@ -347,6 +377,30 @@ public class Product {
 
     public void setCare(String care) {
         this.care = care;
+    }
+
+    public String getColor() {
+        return color;
+    }
+
+    public String getManufacturer() {
+        return manufacturer;
+    }
+
+    public String getCountryOfOrigin() {
+        return countryOfOrigin;
+    }
+
+    public String getManufacturedOn() {
+        return manufacturedOn;
+    }
+
+    /** 고시 네 항목은 같이 저장된다 — 따로 고치는 화면이 없다. */
+    public void setNotice(String color, String manufacturer, String countryOfOrigin, String manufacturedOn) {
+        this.color = color;
+        this.manufacturer = manufacturer;
+        this.countryOfOrigin = countryOfOrigin;
+        this.manufacturedOn = manufacturedOn;
     }
 
     public Short getModelHeightCm() {

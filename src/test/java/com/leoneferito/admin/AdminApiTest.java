@@ -29,6 +29,9 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.event.ApplicationEvents;
+import org.springframework.test.context.event.RecordApplicationEvents;
+import com.leoneferito.product.FrontRebuildTrigger;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -49,6 +52,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Import(TestcontainersConfiguration.class)
 @TestPropertySource(properties = "app.media.storage-dir=${java.io.tmpdir}/lf-media-test")
 @Transactional
+@RecordApplicationEvents
 class AdminApiTest {
 
     @Autowired
@@ -56,6 +60,13 @@ class AdminApiTest {
 
     @Autowired
     private ProductRepository products;
+
+    @Autowired
+    private ApplicationEvents events;
+
+    private long rebuilds() {
+        return events.stream(FrontRebuildTrigger.CatalogChanged.class).count();
+    }
 
     /*
      * 관리자/회원으로 요청한다. 인증 자체는 AuthApiTest 가 검증하므로 여기선 통과시켜 둔다.
@@ -90,6 +101,12 @@ class AdminApiTest {
                   "line": "FERITO",
                   "priceKrw": 290000,
                   "leadTimeDays": 14,
+                  "fabric": "면 100%%",
+                  "care": "드라이클리닝",
+                  "color": "브라운",
+                  "manufacturer": "레오네페리토",
+                  "countryOfOrigin": "대한민국",
+                  "manufacturedOn": "2026년 9월",
                   "skus": [
                     { "size": "95", "measurements": [
                         { "part": "SHOULDER", "valueCm": 45.0, "toleranceCm": 1.0 } ] },
@@ -210,6 +227,51 @@ class AdminApiTest {
         }
 
         @Test
+        @DisplayName("초안을 고치면 손님 화면을 다시 만들지 않고, 공개·비공개하면 다시 만든다")
+        void rebuildOnlyWhenCustomersSeeIt() throws Exception {
+            String id = createProduct("rebuild-check");
+            mockMvc.perform(asAdmin(put("/api/admin/products/" + id))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(saveBody("rebuild-check")))
+                    .andExpect(status().isNoContent());
+            org.assertj.core.api.Assertions.assertThat(rebuilds()).isZero();
+
+            attachImageAndPublish(id, "rebuild-check", uploadImage());
+            // 이미지 붙이는 저장(초안) 0 + 공개 1
+            org.assertj.core.api.Assertions.assertThat(rebuilds()).isEqualTo(1);
+
+            mockMvc.perform(asAdmin(post("/api/admin/products/" + id + "/unpublish")))
+                    .andExpect(status().isNoContent());
+            org.assertj.core.api.Assertions.assertThat(rebuilds()).isEqualTo(2);
+        }
+
+        @Test
+        @DisplayName("상품정보제공고시가 비면 공개가 거부되고, 목록이 그 이유를 알려준다")
+        void cannotPublishWithoutNotice() throws Exception {
+            String mediaId = uploadImage();
+            String id = createProduct("no-notice");
+            mockMvc.perform(asAdmin(put("/api/admin/products/" + id))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "slug": "no-notice",
+                                      "name": "고시 없는 셔츠",
+                                      "category": "SHIRT",
+                                      "line": "LEONE",
+                                      "priceKrw": 100000,
+                                      "leadTimeDays": 10,
+                                      "images": [ { "mediaId": "%s", "kind": "MAIN", "alt": "대표" } ]
+                                    }
+                                    """.formatted(mediaId)))
+                    .andExpect(status().isNoContent());
+
+            mockMvc.perform(asAdmin(post("/api/admin/products/" + id + "/publish")))
+                    .andExpect(status().isConflict());
+            mockMvc.perform(asAdmin(get("/api/admin/products/" + id)))
+                    .andExpect(jsonPath("$.missingForPublish[0]").value("notice"));
+        }
+
+        @Test
         @DisplayName("대표 이미지가 없으면 공개가 거부된다")
         void cannotPublishWithoutMainImage() throws Exception {
             String id = createProduct("no-image-yet");
@@ -235,6 +297,12 @@ class AdminApiTest {
                                       "line": "FERITO",
                                       "priceKrw": 290000,
                                       "leadTimeDays": 14,
+                                      "fabric": "면 100%%",
+                                      "care": "드라이클리닝",
+                                      "color": "브라운",
+                                      "manufacturer": "레오네페리토",
+                                      "countryOfOrigin": "대한민국",
+                                      "manufacturedOn": "2026년 9월",
                                       "images": [
                                         { "mediaId": "%s", "kind": "MAIN", "alt": "측면 컷" }
                                       ],
@@ -333,6 +401,12 @@ class AdminApiTest {
                                       "line": "LEONE",
                                       "priceKrw": 100000,
                                       "leadTimeDays": 10,
+                                      "fabric": "면 100%%",
+                                      "care": "드라이클리닝",
+                                      "color": "브라운",
+                                      "manufacturer": "레오네페리토",
+                                      "countryOfOrigin": "대한민국",
+                                      "manufacturedOn": "2026년 9월",
                                       "sizeChartMediaId": "%s",
                                       "sizeChartAlt": "95~110 사이즈의 어깨·가슴·소매·총장 실측표",
                                       "images": [ { "mediaId": "%s", "kind": "MAIN", "alt": "대표" } ]
@@ -399,6 +473,12 @@ class AdminApiTest {
                       "line": "LEONE",
                       "priceKrw": 100000,
                       "leadTimeDays": 10,
+                      "fabric": "면 100%%",
+                      "care": "드라이클리닝",
+                      "color": "브라운",
+                      "manufacturer": "레오네페리토",
+                      "countryOfOrigin": "대한민국",
+                      "manufacturedOn": "2026년 9월",
                       "instagramUrl": %s,
                       "images": [ { "mediaId": "%s", "kind": "MAIN", "alt": "대표" } ]
                     }
@@ -630,6 +710,12 @@ class AdminApiTest {
                                   "line": "LEONE",
                                   "priceKrw": 100000,
                                   "leadTimeDays": 10,
+                                  "fabric": "면 100%%",
+                                  "care": "드라이클리닝",
+                                  "color": "브라운",
+                                  "manufacturer": "레오네페리토",
+                                  "countryOfOrigin": "대한민국",
+                                  "manufacturedOn": "2026년 9월",
                                   "images": [ { "mediaId": "%s", "kind": "MAIN", "alt": "대표" } ]
                                 }
                                 """.formatted(slug, mediaId)))

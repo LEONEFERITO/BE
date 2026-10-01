@@ -78,6 +78,13 @@ docker compose -f docker-compose.prod.yml run --rm api \
   create-admin --email=ops@example.com --name=운영자 --role=SUPER_ADMIN
 ```
 
+**손님 화면 연결 (중요)** — 프론트는 상품을 **빌드할 때** 이 API 에서 받는다. 그래서:
+
+1. Vercel 프로젝트 환경변수 `NEXT_PUBLIC_API_BASE=https://api.leoneferito.com` (API 가 먼저 떠 있어야 빌드된다.
+   API 가 응답하지 않으면 빌드가 **실패**하고 옛 배포가 그대로 남는다 — 가짜 상품이 올라가는 일은 없다).
+2. Vercel → Settings → Git → Deploy Hooks 에서 훅을 만들고 `.env` 의 `FRONT_DEPLOY_HOOK_URL` 에 넣는다.
+   관리자가 상품을 공개·비공개·수정하면 30초 모아서 한 번 다시 빌드한다 (손님 화면 반영 1~2분).
+
 메일(비밀번호 찾기)을 쓰려면 `.env` 에 `SPRING_MAIL_*` 를 채운다 (`.env.example` 참고).
 비어 있으면 메일만 안 나가고 사이트는 정상이다.
 

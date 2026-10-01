@@ -61,6 +61,8 @@ class ProductApiTest {
         published.setListPriceKrw(320_000L);
         published.setLeadTimeDays((short) 14);
         published.setFabric("면 100%");
+        published.setCare("드라이클리닝");
+        published.setNotice("브라운", "레오네페리토", "대한민국", "2026년 9월");
         published.setModel((short) 183, (short) 84, "100");
         published.addImage(new ProductImage(UUID.randomUUID(), media("products/brown.webp"),
                 ProductImageKind.MAIN, "브라운 셔츠 측면 컷", 0));
@@ -103,6 +105,19 @@ class ProductApiTest {
         org.assertj.core.api.Assertions.assertThat(body)
                 .doesNotContain("PUBLISHED")
                 .doesNotContain("\"id\"");
+    }
+
+    @Test
+    @DisplayName("상세에 상품정보제공고시가 텍스트로 나간다 — 이미지로만 두면 고시 위반이다")
+    void noticeIsText() throws Exception {
+        mockMvc.perform(get("/api/products/brown-shirt"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fabric").value("면 100%"))
+                .andExpect(jsonPath("$.care").value("드라이클리닝"))
+                .andExpect(jsonPath("$.notice.color").value("브라운"))
+                .andExpect(jsonPath("$.notice.manufacturer").value("레오네페리토"))
+                .andExpect(jsonPath("$.notice.countryOfOrigin").value("대한민국"))
+                .andExpect(jsonPath("$.notice.manufacturedOn").value("2026년 9월"));
     }
 
     @Test
@@ -184,6 +199,9 @@ class ProductApiTest {
         noPrice.setName("가격 미정 셔츠");
         noPrice.setPriceKrw(1L); // publish 조건을 채우기 위한 임시값
         noPrice.setLeadTimeDays((short) 10);
+        noPrice.setFabric("면 100%");
+        noPrice.setCare("드라이클리닝");
+        noPrice.setNotice("화이트", "레오네페리토", "대한민국", "2026년 9월");
         noPrice.addImage(new ProductImage(UUID.randomUUID(), media("products/priced-later.webp"),
                 ProductImageKind.MAIN, "대표", 0));
         noPrice.publish();
