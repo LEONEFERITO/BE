@@ -37,7 +37,8 @@ public class ReturnPhotoService {
         if (photos.countByMemberIdAndRequestIsNull(memberId) >= MAX_PENDING) {
             throw new ReturnException("올린 사진이 너무 많습니다. 신청을 마친 뒤 다시 올려 주세요.");
         }
-        MediaAsset asset = media.upload(file);
+        // 아이폰 HEIC 까지 받는다 — 손님은 사진을 찍은 그대로 올린다
+        MediaAsset asset = media.upload(file, com.leoneferito.media.ImageFormat.EVIDENCE);
         ReturnPhoto photo = photos.save(new ReturnPhoto(memberId, asset, urls.urlFor(asset)));
         log.info("교환·반품 사진 업로드 photoId={}", photo.getId());
         return photo;

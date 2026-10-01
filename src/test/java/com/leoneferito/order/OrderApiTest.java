@@ -799,6 +799,12 @@ class OrderApiTest {
                             .header("X-XSRF-TOKEN", csrfToken))
                     .andExpect(status().isBadRequest());
 
+            // 아이폰 HEIC 는 교환·반품 사진으로 받는다 (상품 사진은 안 받는다 — AdminApiTest)
+            byte[] heic = new byte[256];
+            System.arraycopy(new byte[] {0, 0, 0, 0x18, 'f', 't', 'y', 'p', 'h', 'e', 'i', 'c', 0, 0, 0, 0,
+                    'm', 'i', 'f', '1', 'h', 'e', 'i', 'c'}, 0, heic, 0, 24);
+            uploadPhoto(buyer, heic);
+
             // 남이 올린 사진은 붙일 수 없다
             Cookie other = login(mockMvc, OTHER, PASSWORD);
             String othersPhoto = uploadPhoto(other, png());

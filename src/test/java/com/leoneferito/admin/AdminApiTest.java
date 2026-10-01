@@ -85,6 +85,15 @@ class AdminApiTest {
     }
 
     /** 진짜 PNG 바이트. 매직바이트 판별을 실제로 통과해야 한다. */
+    /** 아이폰 HEIC 앞머리 — ftyp 상자(heic, 호환 mif1 · heic) + 나머지. 형식 판별만 보는 테스트용이다. */
+    static byte[] heic() {
+        byte[] head = {0, 0, 0, 0x18, 'f', 't', 'y', 'p', 'h', 'e', 'i', 'c', 0, 0, 0, 0,
+                'm', 'i', 'f', '1', 'h', 'e', 'i', 'c'};
+        byte[] all = new byte[256];
+        System.arraycopy(head, 0, all, 0, head.length);
+        return all;
+    }
+
     private byte[] realPng(int w, int h) throws Exception {
         BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -152,6 +161,30 @@ class AdminApiTest {
     @Nested
     @DisplayName("이미지 업로드")
     class Upload {
+
+        @Test
+        @DisplayName("GIF · BMP 는 상품 사진으로 받고, HEIC(아이폰)는 손님 화면이 못 그려서 받지 않는다")
+        void moreFormats() throws Exception {
+            var gif = new java.io.ByteArrayOutputStream();
+            ImageIO.write(new BufferedImage(8, 6, BufferedImage.TYPE_INT_RGB), "gif", gif);
+            mockMvc.perform(asAdmin(multipart("/api/admin/media")
+                            .file(new MockMultipartFile("file", "a.gif", "image/gif", gif.toByteArray()))))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.width").value(8));
+            var bmp = new java.io.ByteArrayOutputStream();
+            ImageIO.write(new BufferedImage(5, 4, BufferedImage.TYPE_INT_RGB), "bmp", bmp);
+            mockMvc.perform(asAdmin(multipart("/api/admin/media")
+                            .file(new MockMultipartFile("file", "a.bmp", "image/bmp", bmp.toByteArray()))))
+                    .andExpect(status().isOk());
+            mockMvc.perform(asAdmin(multipart("/api/admin/media")
+                            .file(new MockMultipartFile("file", "IMG_0001.HEIC", "image/heic", heic()))))
+                    .andExpect(status().isBadRequest());
+            // "BM" 으로 시작하는 텍스트는 BMP 가 아니다
+            mockMvc.perform(asAdmin(multipart("/api/admin/media")
+                            .file(new MockMultipartFile("file", "x.bmp", "image/bmp",
+                                    "BM<html><script>alert(1)</script>".getBytes(java.nio.charset.StandardCharsets.UTF_8)))))
+                    .andExpect(status().isBadRequest());
+        }
 
         @Test
         @DisplayName("올리면 바로 쓸 수 있는 주소가 함께 온다")

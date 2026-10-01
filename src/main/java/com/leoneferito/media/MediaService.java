@@ -56,8 +56,15 @@ public class MediaService {
         this.storage = storage;
     }
 
+    /** 화면에 그릴 이미지(상품 사진 등) — {@link ImageFormat#WEB}. HEIC 는 받지 않는다. */
     @Transactional
     public MediaAsset upload(MultipartFile file) throws IOException {
+        return upload(file, ImageFormat.WEB);
+    }
+
+    /** 받을 형식을 부르는 쪽이 정한다 (교환·반품 사진은 {@link ImageFormat#EVIDENCE} — 아이폰 HEIC 포함). */
+    @Transactional
+    public MediaAsset upload(MultipartFile file, java.util.Set<ImageFormat> allowed) throws IOException {
         if (file == null || file.isEmpty()) {
             throw new InvalidImageException("이미지 파일을 선택해 주세요.");
         }
@@ -73,10 +80,14 @@ public class MediaService {
         byte[] bytes = file.getBytes();
 
         ImageFormat format = ImageFormat.sniff(bytes);
-        if (format == null) {
+        if (format == null || !allowed.contains(format)) {
             // 무엇이 잘못됐는지 구체적으로 알려주지 않는다. 우회 시도에 힌트가 된다.
-            log.info("알 수 없는 이미지 형식 업로드 거부 size={}", bytes.length);
-            throw new InvalidImageException("JPG · PNG · WebP 이미지만 올릴 수 있습니다.");
+            log.info("받지 않는 이미지 형식 업로드 거부 format={} size={}", format, bytes.length);
+            throw new InvalidImageException(allowed.contains(ImageFormat.HEIC)
+                    ? "JPG · PNG · WebP · GIF · AVIF · BMP · HEIC(아이폰) 사진만 올릴 수 있습니다."
+                    : format == ImageFormat.HEIC
+                            ? "HEIC(아이폰) 사진은 손님 화면에 보이지 않습니다. JPG 로 바꿔 올려 주세요."
+                            : "JPG · PNG · WebP · GIF · AVIF · BMP 이미지만 올릴 수 있습니다.");
         }
 
         Dimensions size = measure(bytes);
