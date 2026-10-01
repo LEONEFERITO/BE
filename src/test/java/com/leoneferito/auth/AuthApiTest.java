@@ -312,6 +312,18 @@ class AuthApiTest {
         }
 
         @Test
+        @DisplayName("이상한 세션 쿠키는 서버 오류가 아니라 비로그인이다 — 쿠키 조작으로 500 을 만들 수 없다")
+        void garbageSessionCookieIsJustAnonymous() throws Exception {
+            // "AAAA" 는 base64 로 풀면 NUL 3바이트다. 예전 설정에서는 이게 DB 조회를 깨뜨려 500 이 났다.
+            for (String junk : new String[] {"AAAA", "not-a-session", "8F3A9C0D1E2B"}) {
+                mockMvc.perform(get("/api/auth/me").cookie(new Cookie("LFSESSION", junk)))
+                        .andExpect(status().isUnauthorized());
+                mockMvc.perform(get("/api/products").cookie(new Cookie("LFSESSION", junk)))
+                        .andExpect(status().isOk());
+            }
+        }
+
+        @Test
         @DisplayName("세션 쿠키는 HttpOnly · SameSite=Lax 다 — 스크립트가 못 읽고 다른 사이트 요청에 안 붙는다")
         void sessionCookieAttributes() throws Exception {
             String setCookie = mockMvc.perform(withCsrf(post("/api/auth/login"))

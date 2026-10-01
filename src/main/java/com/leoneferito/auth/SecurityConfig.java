@@ -82,6 +82,14 @@ public class SecurityConfig {
         serializer.setUseHttpOnlyCookie(true);  // 스크립트가 못 읽는다
         serializer.setSameSite("Lax");          // 다른 사이트에서 시작된 요청에는 안 붙는다
         serializer.setUseSecureCookie(secure);
+        /*
+         * base64 를 끈다. 켜 두면 쿠키 값을 base64 로 풀어서 세션을 찾는데, 아무 쿠키나 풀면
+         * NUL(0x00) 같은 바이트가 나오고 PostgreSQL 이 그 조회를 거부해 **500** 이 났다
+         * (DB 세션 전환 전의 옛 쿠키를 가진 브라우저에서 실제로 났다). 쿠키만 조작하면 누구나
+         * 서버 오류와 에러 로그를 만들 수 있었다. 세션 id 는 UUID 라 인코딩할 이유가 없다 —
+         * 그대로 두면 이상한 값은 그냥 "없는 세션" 이 된다.
+         */
+        serializer.setUseBase64Encoding(false);
         return serializer;
     }
 
