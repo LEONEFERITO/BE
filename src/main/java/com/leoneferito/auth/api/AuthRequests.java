@@ -35,4 +35,14 @@ public final class AuthRequests {
             @NotBlank @Email @Size(max = 254) String email,
             @NotBlank @Size(max = 1000) String password) {
     }
+
+    /** 비밀번호 찾기 — 메일 요청. 가입 여부와 상관없이 같은 답을 한다. */
+    public record PasswordResetRequest(@NotBlank @Email @Size(max = 254) String email) {
+    }
+
+    /** 비밀번호 찾기 — 메일 속 링크의 토큰과 새 비밀번호. 토큰은 43자(32바이트 base64url). */
+    public record PasswordResetConfirm(
+            @NotBlank @Size(max = 100) String token,
+            @NotBlank @Size(max = 1000) String newPassword) {
+    }
 }

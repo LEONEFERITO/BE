@@ -18,7 +18,9 @@ public class AuthenticationFailedException extends RuntimeException {
         /** 이메일이 없거나, 비밀번호가 틀리거나, 탈퇴한 계정이다. 셋을 구분하지 않는다. */
         INVALID_CREDENTIALS,
         /** 자격증명은 맞지만 실패 누적으로 잠겨 있다. */
-        ACCOUNT_LOCKED
+        ACCOUNT_LOCKED,
+        /** 자격증명은 맞지만 관리자가 이용을 정지했다. 잠금과 같은 규칙으로 비밀번호가 맞을 때만 알린다. */
+        ACCOUNT_SUSPENDED
     }
 
     private final Reason reason;

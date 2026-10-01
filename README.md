@@ -3,13 +3,15 @@
 THE MANLY 기성복 브랜드 LEONEFERITO 의 백엔드. Spring Boot 4.1 · Java 21 · PostgreSQL 18.
 
 - 공개 API: 상품 목록·상세 (`/api/products`)
-- 회원: 가입·로그인·세션 (`/api/auth`) — 세션 쿠키, CSRF 토큰
-- 관리자: 상품 등록·수정·공개, 이미지 업로드 (`/api/admin/**`, ADMIN 권한)
+- 회원: 가입·로그인·세션·간편로그인·비밀번호 찾기 (`/api/auth`) — 세션 쿠키(DB 저장), CSRF 토큰
+- 내 정보: 수정·비밀번호 변경·탈퇴 (`/api/me`)
+- 관리자: 상품 등록·수정·공개, 이미지 업로드, 회원 관리 (`/api/admin/**`, ADMIN 권한)
+- 관리자 지정·해제 (`PUT /api/admin/members/{id}/role`, SUPER_ADMIN 권한)
 
 ## 로컬 실행
 
 ```bash
-docker compose up -d           # PostgreSQL 18
+docker compose up -d           # PostgreSQL 18 + Mailpit(메일 받는 곳)
 ./gradlew bootRun              # 기본 프로필 local, http://localhost:8080
 ./gradlew test                 # Testcontainers 가 PostgreSQL 을 띄운다 (Docker 필요)
 ```
@@ -17,14 +19,20 @@ docker compose up -d           # PostgreSQL 18
 포트 5432 를 다른 것이 쓰고 있으면 `DB_PORT=5442 docker compose up -d` 처럼 바꾸고
 `DB_PORT=5442 ./gradlew bootRun` 으로 맞춘다.
 
-관리자 만들기: 화면(`/signup`)에서 가입한 뒤 권한만 올린다.
+비밀번호 찾기 메일은 실제로 나가지 않고 Mailpit 에 쌓인다: http://localhost:8025
+
+관리자 만들기 — 서버 명령 `create-admin`:
 
 ```bash
-docker exec leoneferito-db psql -U leoneferito -d leoneferito \
-  -c "UPDATE member SET role='ADMIN' WHERE email='you@example.com';"
+./gradlew bootRun --args="create-admin --email=you@example.com --name=이름 --role=SUPER_ADMIN"
 ```
 
-다시 로그인하면 관리자 화면(`/admin/products`)이 열린다.
+- 없는 이메일이면 계정을 만들고 **비밀번호 설정 링크**(30분, 한 번)를 터미널에 찍는다.
+  명령이 비밀번호를 정하지 않는다 — 본인이 링크에서 정한다.
+- 이미 있는 계정이면 역할만 바꾼다(비밀번호는 그대로). 그 사람의 로그인 세션은 끊긴다.
+- `SUPER_ADMIN`(최고 관리자)은 **이 명령으로만** 만든다. 일반 관리자(`ADMIN`)는
+  최고 관리자가 회원 관리 화면(`/admin/members`)에서 지정한다.
+- 모든 생성·변경은 `member_admin_log` 에 남는다.
 
 ## 배포
 
@@ -63,12 +71,15 @@ curl https://api.leoneferito.com/actuator/health      # {"status":"UP"}
 
 Flyway 가 기동 때 스키마(V1~)를 만든다. 따로 SQL 을 돌리지 않는다.
 
-관리자 계정은 로컬과 같다 — 프론트에서 가입한 뒤 DB 에서 권한을 올린다:
+첫 관리자(최고 관리자)는 서버 명령으로 만든다. 찍힌 링크를 30분 안에 열어 비밀번호를 정한다:
 
 ```bash
-docker exec leoneferito-db psql -U "$DB_USERNAME" -d "$DB_NAME" \
-  -c "UPDATE member SET role='ADMIN' WHERE email='...';"
+docker compose -f docker-compose.prod.yml run --rm api \
+  create-admin --email=ops@example.com --name=운영자 --role=SUPER_ADMIN
 ```
+
+메일(비밀번호 찾기)을 쓰려면 `.env` 에 `SPRING_MAIL_*` 를 채운다 (`.env.example` 참고).
+비어 있으면 메일만 안 나가고 사이트는 정상이다.
 
 ### 업데이트
 

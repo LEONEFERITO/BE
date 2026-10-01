@@ -34,7 +34,6 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
-import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -77,8 +76,15 @@ class AuthApiTest {
         assertThat(context.getBeanNamesForType(UserDetailsService.class)).isEmpty();
     }
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbc;
+
     @BeforeEach
     void reset() {
+        // 회원을 참조하는 기록(V10)부터 지운다. 다른 테스트 클래스가 남긴 행이 있을 수 있다.
+        jdbc.update("DELETE FROM spring_session");
+        jdbc.update("DELETE FROM member_admin_log");
+        jdbc.update("DELETE FROM password_reset_token");
         members.deleteAll();
         authService.signup(EMAIL, PASSWORD, "홍길동", null);
     }
@@ -292,12 +298,31 @@ class AuthApiTest {
                     .andExpect(jsonPath("$.name").value("홍길동"))
                     .andReturn();
 
-            MockHttpSession session = (MockHttpSession) result.getRequest().getSession(false);
+            Cookie session = result.getResponse().getCookie("LFSESSION");
             assertThat(session).isNotNull();
 
-            mockMvc.perform(get("/api/auth/me").session(session))
+            mockMvc.perform(get("/api/auth/me").cookie(session))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.email").value(EMAIL));
+
+            // 세션은 DB 에 있어야 한다 — 메모리에 있으면 재배포마다 전원 로그아웃된다.
+            Long stored = jdbc.queryForObject(
+                    "SELECT count(*) FROM spring_session WHERE principal_name = ?", Long.class, EMAIL);
+            assertThat(stored).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("세션 쿠키는 HttpOnly · SameSite=Lax 다 — 스크립트가 못 읽고 다른 사이트 요청에 안 붙는다")
+        void sessionCookieAttributes() throws Exception {
+            String setCookie = mockMvc.perform(withCsrf(post("/api/auth/login"))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(loginBody(EMAIL, PASSWORD)))
+                    .andExpect(status().isOk())
+                    .andReturn().getResponse().getHeaders("Set-Cookie").stream()
+                    .filter(h -> h.startsWith("LFSESSION="))
+                    .findFirst().orElseThrow();
+
+            assertThat(setCookie).contains("HttpOnly").contains("SameSite=Lax");
         }
 
         @Test
@@ -339,7 +364,7 @@ class AuthApiTest {
         @DisplayName("탈퇴한 계정은 없는 계정과 같은 응답이다")
         void withdrawnLooksLikeNoAccount() throws Exception {
             Member member = members.findByEmail(EMAIL).orElseThrow();
-            member.withdraw();
+            member.withdraw(Instant.now());
             members.saveAndFlush(member);
 
             mockMvc.perform(withCsrf(post("/api/auth/login"))
@@ -425,12 +450,12 @@ class AuthApiTest {
                             .content(loginBody(EMAIL, PASSWORD)))
                     .andExpect(status().isOk())
                     .andReturn();
-            MockHttpSession session = (MockHttpSession) login.getRequest().getSession(false);
+            Cookie session = login.getResponse().getCookie("LFSESSION");
 
-            mockMvc.perform(withCsrf(post("/api/auth/logout")).session(session))
+            mockMvc.perform(withCsrf(post("/api/auth/logout")).cookie(session))
                     .andExpect(status().isNoContent());
 
-            mockMvc.perform(get("/api/auth/me").session(session))
+            mockMvc.perform(get("/api/auth/me").cookie(session))
                     .andExpect(status().isUnauthorized());
         }
 
@@ -442,16 +467,21 @@ class AuthApiTest {
              * 로그인하면 공격자가 로그인 상태를 그대로 물려받는다.
              * 인증 시점에 id 를 갈아 끼우면 그 통로가 끊긴다.
              */
-            MockHttpSession preLogin = new MockHttpSession();
-            String before = preLogin.getId();
-
-            mockMvc.perform(withCsrf(post("/api/auth/login")).session(preLogin)
+            Cookie planted = mockMvc.perform(withCsrf(post("/api/auth/login"))
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(loginBody(EMAIL, PASSWORD)))
-                    .andExpect(status().isOk());
+                    .andReturn().getResponse().getCookie("LFSESSION");
 
-            assertThat(preLogin.isInvalid()).as("로그인 전 세션이 폐기되어야 한다").isTrue();
-            assertThat(before).isNotBlank();
+            Cookie after = mockMvc.perform(withCsrf(post("/api/auth/login")).cookie(planted)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(loginBody(EMAIL, PASSWORD)))
+                    .andExpect(status().isOk())
+                    .andReturn().getResponse().getCookie("LFSESSION");
+
+            assertThat(after).isNotNull();
+            assertThat(after.getValue()).as("새 세션 id 여야 한다").isNotEqualTo(planted.getValue());
+            mockMvc.perform(get("/api/auth/me").cookie(planted))
+                    .andExpect(status().isUnauthorized());
         }
 
         @Test

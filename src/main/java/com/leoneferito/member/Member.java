@@ -63,8 +63,9 @@ public class Member {
     /**
      * 역할. 기본은 손님이다.
      *
-     * <p>setter 를 두지 않는다. 화면이나 API 로 관리자가 되는 경로가 생기면
-     * 그 경로가 곧 권한 상승 취약점의 후보가 된다. 승격은 DB 에서 직접 한다.
+     * <p>공개 setter 를 두지 않는다. 바꾸는 길은 {@link #changeRole} 하나이고 <b>이 패키지 안에서만</b>
+     * 부를 수 있다 — 회원 관리 서비스와 서버 명령. 다른 곳에서 역할을 바꾸는 코드가 생기면
+     * 그곳이 곧 권한 상승 경로가 된다.
      */
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -84,6 +85,10 @@ public class Member {
 
     @Column(name = "updated_at", nullable = false, insertable = false, updatable = false)
     private Instant updatedAt;
+
+    /** 탈퇴 시각. 탈퇴하면 개인정보가 지워지고 이 값만 남는다 (V10). */
+    @Column(name = "withdrawn_at")
+    private Instant withdrawnAt;
 
     protected Member() {
         // JPA
@@ -165,8 +170,60 @@ public class Member {
         this.passwordHash = Objects.requireNonNull(newPasswordHash, "passwordHash");
     }
 
-    public void withdraw() {
+    /**
+     * 탈퇴 = 익명화.
+     *
+     * <p>행은 남긴다(주문이 참조한다). 대신 사람을 알아볼 수 있는 값을 전부 지운다.
+     * 이메일은 NOT NULL · UNIQUE 라 id 로 만든 자리표시 주소를 넣는다 — {@code .invalid} 는
+     * 절대 존재할 수 없는 도메인으로 예약되어 있어(RFC 2606) 메일이 새어 나갈 일이 없다.
+     *
+     * <p>이메일이 비워지므로 같은 주소로 다시 가입할 수 있다. 제공자 id 도 지워서 간편가입도 다시 된다.
+     * <b>세션은 여기서 끊지 못한다</b> — 세션은 이메일로 찾으므로, 부르는 쪽이 익명화 <b>전에</b> 끊는다.
+     */
+    public void withdraw(Instant now) {
         this.status = MemberStatus.WITHDRAWN;
+        this.withdrawnAt = Objects.requireNonNull(now, "now");
+        this.email = "withdrawn-" + id + "@withdrawn.invalid";
+        this.name = "탈퇴 회원";
+        this.phone = null;
+        this.passwordHash = null;
+        this.providerUserId = null;
+        this.failedLoginAttempts = 0;
+        this.lockedUntil = null;
+    }
+
+    /** 이용 정지. 탈퇴한 계정은 정지할 것이 없다. */
+    public void suspend() {
+        if (status != MemberStatus.ACTIVE) {
+            throw new IllegalStateException("정지할 수 없는 상태 status=" + status);
+        }
+        this.status = MemberStatus.SUSPENDED;
+    }
+
+    public void reactivate() {
+        if (status != MemberStatus.SUSPENDED) {
+            throw new IllegalStateException("정지 상태가 아님 status=" + status);
+        }
+        this.status = MemberStatus.ACTIVE;
+    }
+
+    /** 로그인 실패 잠금을 사람이 푼다. 손님이 15분을 못 기다리는 CS 상황용. */
+    public void unlock() {
+        this.failedLoginAttempts = 0;
+        this.lockedUntil = null;
+    }
+
+    /** 역할 변경. 규칙(누가 누구를)은 부르는 쪽이 판단한다. 위 필드 주석 참고. */
+    void changeRole(MemberRole newRole) {
+        this.role = Objects.requireNonNull(newRole, "role");
+    }
+
+    public boolean isSuspended() {
+        return status == MemberStatus.SUSPENDED;
+    }
+
+    public boolean isWithdrawn() {
+        return status == MemberStatus.WITHDRAWN;
     }
 
     public UUID getId() {
@@ -231,6 +288,10 @@ public class Member {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    public Instant getWithdrawnAt() {
+        return withdrawnAt;
     }
 
     /**

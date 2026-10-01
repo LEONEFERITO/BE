@@ -23,21 +23,10 @@ public class AuthService {
 
     private static final Logger log = LoggerFactory.getLogger(AuthService.class);
 
-    /**
-     * BCrypt 는 <b>72바이트를 넘는 입력을 잘라낸다.</b>
-     *
-     * <p>조용히 자르면 73번째 글자부터는 검증에 쓰이지 않는다. 긴 암호를 쓴 사람이
-     * 오히려 앞 72바이트만으로 인증되는 셈이라, 본인은 더 안전하다고 믿는데 아니다.
-     * 그래서 자르지 않고 <b>거부한다.</b> 한글은 UTF-8 로 3바이트라 24자쯤이 한계다.
-     */
-    private static final int MAX_PASSWORD_BYTES = 72;
-
-    /** 너무 짧은 비밀번호를 막는다. 구성 규칙(대문자·특수문자)은 두지 않는다 — 아래 주석 참고. */
-    private static final int MIN_PASSWORD_LENGTH = 10;
-
     private final MemberRepository members;
     private final PasswordEncoder passwordEncoder;
     private final LoginAttemptRecorder attempts;
+    private final PasswordPolicy passwordPolicy;
 
     /**
      * 존재하지 않는 계정으로 로그인을 시도했을 때 <b>대조할 가짜 해시</b>.
@@ -50,10 +39,11 @@ public class AuthService {
     private final String dummyHash;
 
     public AuthService(MemberRepository members, PasswordEncoder passwordEncoder,
-                       LoginAttemptRecorder attempts) {
+                       LoginAttemptRecorder attempts, PasswordPolicy passwordPolicy) {
         this.members = members;
         this.passwordEncoder = passwordEncoder;
         this.attempts = attempts;
+        this.passwordPolicy = passwordPolicy;
         this.dummyHash = passwordEncoder.encode(UUID.randomUUID().toString());
     }
 
@@ -69,7 +59,7 @@ public class AuthService {
     @Transactional
     public UUID signup(String rawEmail, String rawPassword, String name, String phone) {
         String email = Member.normalizeEmail(rawEmail);
-        validatePassword(rawPassword, email);
+        passwordPolicy.validate(rawPassword, email);
 
         if (members.existsByEmail(email)) {
             throw new EmailAlreadyRegisteredException(email);
@@ -104,7 +94,7 @@ public class AuthService {
         Instant now = Instant.now();
 
         Optional<Member> found = members.findByEmail(email)
-                .filter(Member::isActive); // 탈퇴 계정은 없는 것과 같다
+                .filter(m -> !m.isWithdrawn()); // 탈퇴 계정은 없는 것과 같다
 
         if (found.isEmpty()) {
             // 타이밍을 맞추기 위한 헛수고. 결과는 버린다.
@@ -140,32 +130,17 @@ public class AuthService {
             throw new AuthenticationFailedException(Reason.INVALID_CREDENTIALS);
         }
 
+        /*
+         * 이용 정지는 잠금과 같은 규칙이다 — 비밀번호가 맞았을 때만 알린다.
+         * 틀린 비밀번호에 "정지된 계정" 이라고 답하면 그 이메일이 가입되어 있다는 게 샌다.
+         */
+        if (member.isSuspended()) {
+            log.info("정지된 계정 로그인 시도 memberId={}", member.getId());
+            throw new AuthenticationFailedException(Reason.ACCOUNT_SUSPENDED);
+        }
+
         attempts.recordSuccess(member.getId(), now);
         log.info("로그인 성공 memberId={}", member.getId());
         return member;
-    }
-
-    /**
-     * 비밀번호 규칙.
-     *
-     * <p>대문자·숫자·특수문자 조합을 강제하지 않는다. 그런 규칙은 사람을 {@code Password1!}
-     * 같은 예측 가능한 형태로 몰아넣고, 기억하지 못해 메모지에 적게 만든다.
-     * <b>길이</b>가 훨씬 효과적이다 (NIST SP 800-63B 도 같은 방향이다).
-     *
-     * <p>대신 이메일을 그대로 쓴 비밀번호는 막는다. 가장 먼저 시도되는 후보다.
-     */
-    private void validatePassword(String rawPassword, String email) {
-        if (rawPassword == null || rawPassword.length() < MIN_PASSWORD_LENGTH) {
-            throw new WeakPasswordException("비밀번호는 " + MIN_PASSWORD_LENGTH + "자 이상이어야 합니다.");
-        }
-        if (rawPassword.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > MAX_PASSWORD_BYTES) {
-            throw new WeakPasswordException(
-                    "비밀번호가 너무 깁니다. 영문 기준 " + MAX_PASSWORD_BYTES + "자 이내로 입력해 주세요.");
-        }
-
-        String localPart = email.substring(0, email.indexOf('@') < 0 ? email.length() : email.indexOf('@'));
-        if (!localPart.isBlank() && rawPassword.toLowerCase(java.util.Locale.ROOT).contains(localPart)) {
-            throw new WeakPasswordException("비밀번호에 이메일 주소를 포함할 수 없습니다.");
-        }
     }
 }

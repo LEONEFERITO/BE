@@ -24,6 +24,8 @@ import org.springframework.security.web.context.HttpSessionSecurityContextReposi
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
+import org.springframework.session.web.http.CookieSerializer;
+import org.springframework.session.web.http.DefaultCookieSerializer;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -59,6 +61,28 @@ public class SecurityConfig {
     @Bean
     public PasswordEncoder passwordEncoder() {
         return PasswordEncoderFactories.createDelegatingPasswordEncoder();
+    }
+
+    /**
+     * 세션 쿠키.
+     *
+     * <p><b>설정 파일이 아니라 여기서 정한다.</b> 세션을 Spring Session(DB)이 맡으면 쿠키도 그쪽이 쓰는데,
+     * {@code server.servlet.session.cookie.*} 설정이 거기까지 전달되지 않았다 — 실제로
+     * {@code SESSION=…; Path=/} 만 나가고 HttpOnly · SameSite 가 빠져 있었다(테스트로 확인).
+     * 보안 속성은 설정 전달 경로에 기대지 않고 코드로 못박는다.
+     *
+     * <p>Secure 만 설정에서 읽는다 — 로컬은 http 라 꺼야 한다 (application.yml local 프로필).
+     */
+    @Bean
+    public CookieSerializer cookieSerializer(
+            @Value("${server.servlet.session.cookie.secure:true}") boolean secure) {
+        DefaultCookieSerializer serializer = new DefaultCookieSerializer();
+        serializer.setCookieName("LFSESSION");
+        serializer.setCookiePath("/");
+        serializer.setUseHttpOnlyCookie(true);  // 스크립트가 못 읽는다
+        serializer.setSameSite("Lax");          // 다른 사이트에서 시작된 요청에는 안 붙는다
+        serializer.setUseSecureCookie(secure);
+        return serializer;
     }
 
     /** 로그인 성공 시 인증 정보를 세션에 저장하는 경로. {@code AuthController} 가 직접 쓴다. */
@@ -131,7 +155,7 @@ public class SecurityConfig {
                         // 공개 영역
                         .requestMatchers(HttpMethod.GET, "/api/products", "/api/products/**").permitAll()
                         .requestMatchers("/api/auth/signup", "/api/auth/login", "/api/auth/csrf",
-                                "/api/auth/social").permitAll()
+                                "/api/auth/social", "/api/auth/password-reset/**").permitAll()
                         // 간편 로그인 시작·콜백. 인증 전에 오는 주소라 열어 둔다.
                         .requestMatchers("/oauth2/authorization/*", "/login/oauth2/code/*").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
@@ -144,6 +168,8 @@ public class SecurityConfig {
                          * 관리자 영역. 여기 있는 건 전부 쓰기이고, 뚫리면 상품 정보와
                          * 이미지 저장소가 통째로 남의 것이 된다.
                          */
+                        // 관리자 지정·해제는 최고 관리자만. 위에서부터 맞추므로 /api/admin/** 보다 먼저 와야 한다.
+                        .requestMatchers(HttpMethod.PUT, "/api/admin/members/*/role").hasRole("SUPER_ADMIN")
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         // CORS 사전 요청은 인증 대상이 아니다
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()

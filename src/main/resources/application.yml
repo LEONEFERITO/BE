@@ -76,8 +76,11 @@ app:
     # 쿠키를 주고받으므로 * 를 쓸 수 없다. 허용 출처를 명시한다.
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
   front:
-    # 간편 로그인이 끝난 뒤 브라우저를 돌려보낼 프론트 주소.
+    # 간편 로그인이 끝난 뒤 브라우저를 돌려보낼 프론트 주소. 비밀번호 재설정 링크도 이 주소로 만든다.
     base-url: ${FRONT_BASE_URL:http://localhost:3000}
+  mail:
+    # 보내는 사람. SMTP 서버가 이 주소로 보낼 권한이 있어야 한다(SPF/DKIM). TODO(고객확인) 발신 주소
+    from: ${MAIL_FROM:LEONE FERITO <no-reply@leoneferito.com>}
   social:
     # 간편가입 제공자. client-id 가 비어 있으면 그 제공자는 꺼진다 —
     # 버튼이 안 나오고, 시작 주소로 들어와도 401 이다. 키 없이도 사이트는 뜬다.
@@ -114,6 +117,12 @@ server:
         name: LFSESSION
 
 management:
+  health:
+    mail:
+      # 메일 서버 상태를 헬스체크에 넣지 않는다. 넣으면 메일 서버가 잠깐 죽었을 때
+      # 준비 상태(readiness)가 DOWN 이 되어 사이트 전체가 트래픽에서 빠진다 —
+      # 비밀번호 찾기 하나 때문에 쇼핑몰이 멈추는 셈이다. 메일 실패는 로그로 본다.
+      enabled: false
   endpoints:
     web:
       exposure:
@@ -145,6 +154,12 @@ spring:
     username: ${DB_USERNAME:leoneferito}
     password: ${DB_PASSWORD:leoneferito_local_only}
     driver-class-name: org.postgresql.Driver
+
+  # 로컬 메일은 Mailpit(docker-compose)이 받는다. 실제로 나가지 않고 http://localhost:8025 에 보인다.
+  # 운영은 SPRING_MAIL_HOST · SPRING_MAIL_PORT · SPRING_MAIL_USERNAME · SPRING_MAIL_PASSWORD 환경변수로 넣는다.
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
 
 server:
   servlet:

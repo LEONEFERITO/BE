@@ -2,6 +2,7 @@ package com.leoneferito.auth.api;
 
 import com.leoneferito.auth.AuthService;
 import com.leoneferito.auth.MemberPrincipal;
+import com.leoneferito.auth.PasswordResetService;
 import com.leoneferito.auth.social.SocialLoginConfig;
 import com.leoneferito.member.Member;
 import jakarta.servlet.http.HttpServletRequest;
@@ -38,12 +39,14 @@ public class AuthController {
     private final AuthService authService;
     private final SecurityContextRepository contextRepository;
     private final SocialLoginConfig.Enabled social;
+    private final PasswordResetService passwordReset;
 
     public AuthController(AuthService authService, SecurityContextRepository contextRepository,
-                          SocialLoginConfig.Enabled social) {
+                          SocialLoginConfig.Enabled social, PasswordResetService passwordReset) {
         this.authService = authService;
         this.contextRepository = contextRepository;
         this.social = social;
+        this.passwordReset = passwordReset;
     }
 
     /**
@@ -131,6 +134,27 @@ public class AuthController {
             session.invalidate();
         }
         SecurityContextHolder.clearContext();
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * 비밀번호 찾기 — 재설정 메일 요청.
+     *
+     * <p>언제나 202 다. 가입된 이메일이든 아니든, 간편가입 계정이든 같은 답을 한다
+     * ({@link PasswordResetService} 참고). 화면도 "메일을 보냈습니다" 한 가지만 말한다.
+     */
+    @PostMapping("/password-reset/request")
+    public ResponseEntity<Void> requestPasswordReset(
+            @Valid @RequestBody AuthRequests.PasswordResetRequest request) {
+        passwordReset.request(request.email());
+        return ResponseEntity.accepted().build();
+    }
+
+    /** 비밀번호 찾기 — 새 비밀번호 저장. 성공하면 그 계정의 모든 세션이 끊긴다. 다시 로그인한다. */
+    @PostMapping("/password-reset/confirm")
+    public ResponseEntity<Void> confirmPasswordReset(
+            @Valid @RequestBody AuthRequests.PasswordResetConfirm request) {
+        passwordReset.reset(request.token(), request.newPassword());
         return ResponseEntity.noContent().build();
     }
 

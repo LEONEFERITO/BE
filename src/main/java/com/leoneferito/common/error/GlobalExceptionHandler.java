@@ -137,6 +137,7 @@ public class GlobalExceptionHandler {
 		String message = switch (e.getReason()) {
 			case INVALID_CREDENTIALS -> "이메일 또는 비밀번호가 올바르지 않습니다.";
 			case ACCOUNT_LOCKED -> "로그인 시도가 많아 계정이 잠겼습니다. 잠시 후 다시 시도해 주세요.";
+			case ACCOUNT_SUSPENDED -> "이용이 정지된 계정입니다. 고객센터로 문의해 주세요.";
 		};
 		return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
 				.body(ErrorResponse.of(e.getReason().name(), message, traceId));
@@ -166,6 +167,60 @@ public class GlobalExceptionHandler {
 	public ResponseEntity<ErrorResponse> handleWeakPassword(com.leoneferito.auth.WeakPasswordException e) {
 		return ResponseEntity.badRequest()
 				.body(ErrorResponse.of("WEAK_PASSWORD", e.getMessage(), currentTraceId()));
+	}
+
+	/**
+	 * 비밀번호 재설정 링크가 없거나 · 만료됐거나 · 이미 쓰였다. 400 이다.
+	 *
+	 * <p>셋을 구분하지 않는다. 어느 쪽이든 손님이 할 일은 같다 — 링크를 다시 받는다.
+	 */
+	@ExceptionHandler(com.leoneferito.auth.PasswordResetService.InvalidTokenException.class)
+	public ResponseEntity<ErrorResponse> handleInvalidResetToken(com.leoneferito.auth.PasswordResetService.InvalidTokenException e) {
+		return ResponseEntity.badRequest()
+				.body(ErrorResponse.of("INVALID_RESET_TOKEN",
+						"링크가 만료되었거나 이미 사용되었습니다. 비밀번호 찾기를 다시 해 주세요.", currentTraceId()));
+	}
+
+	/**
+	 * 마이페이지에서 현재 비밀번호가 틀렸다. 400 이다 (401 이 아니다).
+	 *
+	 * <p>401 을 주면 프론트가 "로그인이 풀렸다" 로 읽고 로그인 화면으로 보낸다.
+	 * 로그인은 멀쩡하고 입력만 틀린 것이다.
+	 */
+	@ExceptionHandler(com.leoneferito.member.MemberAccountService.WrongPasswordException.class)
+	public ResponseEntity<ErrorResponse> handleWrongPassword(com.leoneferito.member.MemberAccountService.WrongPasswordException e) {
+		String message = e.isLocked()
+				? "시도가 많아 잠시 잠겼습니다. 15분 뒤에 다시 시도해 주세요."
+				: "현재 비밀번호가 올바르지 않습니다.";
+		return ResponseEntity.badRequest()
+				.body(ErrorResponse.of(e.isLocked() ? "ACCOUNT_LOCKED" : "WRONG_PASSWORD", message, currentTraceId()));
+	}
+
+	/** 간편가입 계정은 비밀번호가 없어 바꿀 수 없다. 409 다. */
+	@ExceptionHandler(com.leoneferito.member.MemberAccountService.NoPasswordException.class)
+	public ResponseEntity<ErrorResponse> handleNoPassword(com.leoneferito.member.MemberAccountService.NoPasswordException e) {
+		return ResponseEntity.status(HttpStatus.CONFLICT)
+				.body(ErrorResponse.of("NO_PASSWORD",
+						"간편가입 계정은 비밀번호가 없습니다. 카카오·네이버로 로그인해 주세요.", currentTraceId()));
+	}
+
+	/** 관리자는 스스로 탈퇴할 수 없다. 409 다. */
+	@ExceptionHandler(com.leoneferito.member.MemberAccountService.AdminWithdrawalException.class)
+	public ResponseEntity<ErrorResponse> handleAdminWithdrawal(com.leoneferito.member.MemberAccountService.AdminWithdrawalException e) {
+		return ResponseEntity.status(HttpStatus.CONFLICT)
+				.body(ErrorResponse.of("ADMIN_CANNOT_WITHDRAW",
+						"관리자 계정은 탈퇴할 수 없습니다. 먼저 관리자 권한을 해제해 주세요.", currentTraceId()));
+	}
+
+	/**
+	 * 회원 관리 규칙 위반 (자기 자신 정지, 최고 관리자 강등 등). 409 다.
+	 *
+	 * <p>메시지를 그대로 내보낸다 — 관리자 화면에서만 나오고, 무엇이 막혔는지 알아야 한다.
+	 */
+	@ExceptionHandler(com.leoneferito.member.AdminMemberService.MemberRuleException.class)
+	public ResponseEntity<ErrorResponse> handleMemberRule(com.leoneferito.member.AdminMemberService.MemberRuleException e) {
+		return ResponseEntity.status(HttpStatus.CONFLICT)
+				.body(ErrorResponse.of("MEMBER_RULE", e.getMessage(), currentTraceId()));
 	}
 
 	/**

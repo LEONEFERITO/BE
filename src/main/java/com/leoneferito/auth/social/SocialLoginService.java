@@ -51,6 +51,9 @@ public class SocialLoginService implements OAuth2UserService<OAuth2UserRequest, 
         Member member = members.findByProviderAndProviderUserId(provider.memberProvider, profile.userId())
                 .orElseGet(() -> signup(provider, profile));
 
+        if (member.isSuspended()) {
+            throw reject("suspended", "이용이 정지된 계정입니다.");
+        }
         if (!member.isActive()) {
             throw reject("withdrawn", "탈퇴한 계정입니다.");
         }

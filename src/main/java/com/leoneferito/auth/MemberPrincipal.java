@@ -4,7 +4,6 @@ import com.leoneferito.member.Member;
 import com.leoneferito.member.MemberRole;
 import java.io.Serializable;
 import java.util.Collection;
-import java.util.List;
 import java.util.UUID;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -66,11 +65,12 @@ public class MemberPrincipal implements UserDetails, Serializable {
      * <p>세션에 저장된 값이므로, DB 에서 역할을 바꿔도 <b>이미 로그인한 세션에는
      * 반영되지 않는다.</b> 관리자를 내릴 때는 세션도 함께 끊어야 한다
      * (SPRING_SESSION 에서 해당 PRINCIPAL_NAME 행을 지운다).
-     * 반대 방향(승격)은 다시 로그인하면 된다.
+     * 반대 방향(승격)은 다시 로그인하면 된다. 회원 관리 화면은 내릴 때 세션을 함께 끊는다
+     * ({@code SessionTerminator}).
      */
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return List.of(new SimpleGrantedAuthority(role.authority()));
+        return role.authorities().stream().map(SimpleGrantedAuthority::new).toList();
     }
 
     /** 세션에 비밀번호를 담지 않는다. 위 클래스 주석 참고. */
