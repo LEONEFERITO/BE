@@ -1,5 +1,6 @@
 package com.leoneferito.auth.api;
 
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
@@ -28,7 +29,13 @@ public final class AuthRequests {
              * 국가별 형식을 강하게 검증하면 멀쩡한 번호가 거부된다.
              */
             @Pattern(regexp = "^[0-9-]{9,20}$", message = "전화번호 형식이 올바르지 않습니다.")
-            String phone) {
+            String phone,
+            /*
+             * 약관 동의 · 만 14세 확인. 화면의 체크만 믿지 않고 서버가 다시 본다 —
+             * API 를 직접 부르면 화면 검사는 없는 것과 같다. 빠지면 false 라 거절된다.
+             */
+            @AssertTrue(message = "이용약관에 동의해 주세요.") boolean agreeTerms,
+            @AssertTrue(message = "만 14세 이상만 가입할 수 있습니다.") boolean over14) {
     }
 
     public record Login(

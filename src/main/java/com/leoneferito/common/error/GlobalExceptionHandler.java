@@ -223,6 +223,58 @@ public class GlobalExceptionHandler {
 				.body(ErrorResponse.of("MEMBER_RULE", e.getMessage(), currentTraceId()));
 	}
 
+	// ── 장바구니 · 주문 · 결제 ─────────────────────────────────────
+
+	/** 장바구니 규칙 위반 (주문 불가 사이즈, 수량 초과 등). 400. 메시지는 손님에게 그대로 보인다. */
+	@ExceptionHandler(com.leoneferito.order.CartItem.CartException.class)
+	public ResponseEntity<ErrorResponse> handleCart(com.leoneferito.order.CartItem.CartException e) {
+		return ResponseEntity.badRequest().body(ErrorResponse.of("CART_INVALID", e.getMessage(), currentTraceId()));
+	}
+
+	/** 지금 주문 상태에서 할 수 없는 일 (제작 중인 주문 취소 등). 409. */
+	@ExceptionHandler(com.leoneferito.order.ShopOrder.OrderStateException.class)
+	public ResponseEntity<ErrorResponse> handleOrderState(com.leoneferito.order.ShopOrder.OrderStateException e) {
+		return ResponseEntity.status(HttpStatus.CONFLICT)
+				.body(ErrorResponse.of("ORDER_STATE", e.getMessage(), currentTraceId()));
+	}
+
+	/**
+	 * 결제사 거절 · 연결 실패. 키가 없으면 503(결제 준비 중), 나머지는 409.
+	 * 토스 메시지는 손님용 문장이라 그대로 보여준다("한도 초과입니다" 등) — 무엇을 해야 하는지 알 수 있다.
+	 */
+	@ExceptionHandler(com.leoneferito.payment.TossPaymentsClient.PaymentException.class)
+	public ResponseEntity<ErrorResponse> handlePayment(com.leoneferito.payment.TossPaymentsClient.PaymentException e) {
+		String traceId = currentTraceId();
+		if ("NOT_CONFIGURED".equals(e.getCode())) {
+			return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+					.body(ErrorResponse.of("PAYMENT_NOT_READY", "결제 준비 중입니다.", traceId));
+		}
+		log.info("결제 실패 traceId={} code={}", traceId, e.getCode());
+		return ResponseEntity.status(HttpStatus.CONFLICT)
+				.body(ErrorResponse.of("PAYMENT_FAILED", e.getMessage(), traceId));
+	}
+
+	/** 화면이 보낸 결제 금액이 주문 금액과 다르다. 토스에 보내기 전에 거절했다. 400. */
+	@ExceptionHandler(com.leoneferito.order.OrderService.AmountMismatchException.class)
+	public ResponseEntity<ErrorResponse> handleAmountMismatch(com.leoneferito.order.OrderService.AmountMismatchException e) {
+		return ResponseEntity.badRequest().body(ErrorResponse.of("AMOUNT_MISMATCH",
+				"결제 금액이 주문 금액과 다릅니다. 주문서를 다시 만들어 주세요.", currentTraceId()));
+	}
+
+	/** 배송비 정책이 없다 — 주문을 받지 않는다(fail closed). 503. */
+	@ExceptionHandler(com.leoneferito.order.OrderService.ShippingPolicyPendingException.class)
+	public ResponseEntity<ErrorResponse> handleShippingPending(com.leoneferito.order.OrderService.ShippingPolicyPendingException e) {
+		return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(ErrorResponse.of("SHIPPING_POLICY_PENDING",
+				"배송 정책을 준비하고 있어 지금은 주문할 수 없습니다.", currentTraceId()));
+	}
+
+	/** 진행 중인 주문이 있어 탈퇴할 수 없다. 409. */
+	@ExceptionHandler(com.leoneferito.member.MemberAccountService.OrdersInProgressException.class)
+	public ResponseEntity<ErrorResponse> handleOrdersInProgress(com.leoneferito.member.MemberAccountService.OrdersInProgressException e) {
+		return ResponseEntity.status(HttpStatus.CONFLICT).body(ErrorResponse.of("ORDERS_IN_PROGRESS",
+				"진행 중인 주문이 있어 탈퇴할 수 없습니다. 배송이 끝난 뒤 다시 시도해 주세요.", currentTraceId()));
+	}
+
 	/**
 	 * 업로드된 파일이 이미지로 받아들일 수 없는 경우. 400 이다.
 	 *

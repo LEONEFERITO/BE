@@ -73,6 +73,11 @@ public class SocialLoginService implements OAuth2UserService<OAuth2UserRequest, 
         String name = profile.name() != null ? profile.name() : "회원";
         Member member = Member.social(UUID.randomUUID(), provider.memberProvider,
                 profile.userId(), email, name);
+        /*
+         * 간편가입은 가입 화면의 체크를 거치지 않는다. 대신 버튼 바로 위에 "처음이면 약관 동의 ·
+         * 만 14세 이상 확인으로 가입됩니다" 를 고지한다(SocialButtons). 그 고지를 보고 누른 것으로 기록한다.
+         */
+        member.agreeTerms("SOCIAL_NOTICE", Instant.now());
         members.save(member);
         log.info("간편 가입 provider={} memberId={}", provider, member.getId());
         return member;

@@ -86,6 +86,23 @@ public class Member {
     @Column(name = "updated_at", nullable = false, insertable = false, updatable = false)
     private Instant updatedAt;
 
+    /**
+     * 현재 이용약관 판. 약관을 개정하면 이 값을 바꾼다 — 그 뒤 가입자는 새 판에 동의한 것으로 남는다.
+     * TODO(고객확인) 약관 확정 · 시행일이 정해지면 "2026-MM-DD" 로 바꾼다.
+     */
+    public static final String CURRENT_TERMS_VERSION = "draft-2026-10-01";
+
+    /** 약관 동의 · 만 14세 확인 (V12). 동의 없이는 가입이 되지 않는다. */
+    @Column(name = "terms_agreed_at")
+    private Instant termsAgreedAt;
+
+    /** FORM(가입 화면 체크) · SOCIAL_NOTICE(간편가입 버튼 위 고지를 보고 진행). */
+    @Column(name = "terms_agreed_via")
+    private String termsAgreedVia;
+
+    @Column(name = "terms_version")
+    private String termsVersion;
+
     /** 탈퇴 시각. 탈퇴하면 개인정보가 지워지고 이 값만 남는다 (V10). */
     @Column(name = "withdrawn_at")
     private Instant withdrawnAt;
@@ -190,6 +207,28 @@ public class Member {
         this.providerUserId = null;
         this.failedLoginAttempts = 0;
         this.lockedUntil = null;
+    }
+
+    /**
+     * 약관 동의와 만 14세 확인을 기록한다. 동의를 받았는지 판단하는 건 부르는 쪽이다
+     * (가입 요청 검증 · 간편가입 고지). 이 기록은 탈퇴해도 지우지 않는다 — 개인을 알아볼 수 없는 값이다.
+     */
+    public void agreeTerms(String via, Instant now) {
+        this.termsAgreedVia = Objects.requireNonNull(via, "via");
+        this.termsAgreedAt = Objects.requireNonNull(now, "now");
+        this.termsVersion = CURRENT_TERMS_VERSION;
+    }
+
+    public Instant getTermsAgreedAt() {
+        return termsAgreedAt;
+    }
+
+    public String getTermsAgreedVia() {
+        return termsAgreedVia;
+    }
+
+    public String getTermsVersion() {
+        return termsVersion;
     }
 
     /** 이용 정지. 탈퇴한 계정은 정지할 것이 없다. */

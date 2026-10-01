@@ -4,6 +4,9 @@ import com.leoneferito.auth.LoginAttemptRecorder;
 import com.leoneferito.auth.PasswordPolicy;
 import com.leoneferito.auth.SessionTerminator;
 import com.leoneferito.common.error.ResourceNotFoundException;
+import com.leoneferito.order.OrderStatus;
+import com.leoneferito.order.ShopOrderRepository;
+import java.util.EnumSet;
 import java.time.Instant;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -28,15 +31,17 @@ public class MemberAccountService {
     private final PasswordPolicy passwordPolicy;
     private final SessionTerminator sessionTerminator;
     private final LoginAttemptRecorder attempts;
+    private final ShopOrderRepository orders;
 
     public MemberAccountService(MemberRepository members, PasswordEncoder passwordEncoder,
                                 PasswordPolicy passwordPolicy, SessionTerminator sessionTerminator,
-                                LoginAttemptRecorder attempts) {
+                                LoginAttemptRecorder attempts, ShopOrderRepository orders) {
         this.members = members;
         this.passwordEncoder = passwordEncoder;
         this.passwordPolicy = passwordPolicy;
         this.sessionTerminator = sessionTerminator;
         this.attempts = attempts;
+        this.orders = orders;
     }
 
     @Transactional(readOnly = true)
@@ -76,7 +81,7 @@ public class MemberAccountService {
      * 간편가입 회원은 비밀번호가 없어서 다시 묻지 못한다 — 화면이 한 번 더 확인한다.
      * 관리자는 스스로 탈퇴하지 못한다. 먼저 권한을 내려야 한다.
      *
-     * <p>TODO(주문 도메인) 진행 중인 주문·교환이 있으면 탈퇴를 막는다.
+     * <p>진행 중인 주문(결제 완료 · 제작 중 · 배송 중)이 있으면 막는다 — 환불받을 곳이 사라진다.
      */
     @Transactional
     public void withdraw(UUID memberId, String password) {
@@ -86,6 +91,10 @@ public class MemberAccountService {
         }
         if (member.hasPassword()) {
             verifyPassword(member, password);
+        }
+        if (orders.existsByMemberIdAndStatusIn(member.getId(),
+                EnumSet.of(OrderStatus.PAID, OrderStatus.IN_PRODUCTION, OrderStatus.SHIPPED))) {
+            throw new OrdersInProgressException();
         }
 
         // 세션은 이메일로 찾는다. 익명화하면 이메일이 바뀌므로 그 전에 끊는다.
@@ -124,6 +133,12 @@ public class MemberAccountService {
     public static class NoPasswordException extends RuntimeException {
         public NoPasswordException() {
             super("비밀번호 없는 계정");
+        }
+    }
+
+    public static class OrdersInProgressException extends RuntimeException {
+        public OrdersInProgressException() {
+            super("진행 중인 주문");
         }
     }
 

@@ -67,6 +67,8 @@ public class AuthService {
 
         Member member = new Member(UUID.randomUUID(), email,
                 passwordEncoder.encode(rawPassword), name, phone);
+        // 약관 동의 · 만 14세 확인은 가입 요청 검증(AuthRequests.Signup)이 받는다. 여기서는 기록만 한다.
+        member.agreeTerms("FORM", Instant.now());
         members.save(member);
 
         // 이메일은 개인정보다. 로그에는 식별자만 남긴다.

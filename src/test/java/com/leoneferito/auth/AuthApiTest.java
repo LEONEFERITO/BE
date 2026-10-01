@@ -83,6 +83,10 @@ class AuthApiTest {
     void reset() {
         // 회원을 참조하는 기록(V10)부터 지운다. 다른 테스트 클래스가 남긴 행이 있을 수 있다.
         jdbc.update("DELETE FROM spring_session");
+        jdbc.update("DELETE FROM order_event");
+        jdbc.update("DELETE FROM order_item");
+        jdbc.update("DELETE FROM orders");
+        jdbc.update("DELETE FROM cart_item");
         jdbc.update("DELETE FROM member_admin_log");
         jdbc.update("DELETE FROM password_reset_token");
         members.deleteAll();
@@ -157,6 +161,9 @@ class AuthApiTest {
             assertThat(saved.getProviderUserId()).isEqualTo("123456789");
             assertThat(saved.hasPassword()).isFalse();
             assertThat(saved.getName()).isEqualTo("김레오");
+            // 버튼 위 고지를 보고 진행한 것으로 동의가 남는다.
+            assertThat(saved.getTermsAgreedVia()).isEqualTo("SOCIAL_NOTICE");
+            assertThat(saved.getTermsAgreedAt()).isNotNull();
         }
 
         @Test
@@ -204,6 +211,31 @@ class AuthApiTest {
     class Signup {
 
         @Test
+        @DisplayName("약관 동의 · 만 14세 확인이 없으면 가입되지 않는다 — 화면 체크를 건너뛰고 API 를 불러도")
+        void consentRequired() throws Exception {
+            for (String flags : new String[] {
+                    "",                                          // 둘 다 없음
+                    ",\"agreeTerms\":true",                       // 만 14세 확인 없음
+                    ",\"agreeTerms\":true,\"over14\":false",      // 만 14세 미만
+                    ",\"agreeTerms\":false,\"over14\":true"}) {   // 약관 거부
+                mockMvc.perform(withCsrf(post("/api/auth/signup"))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"email\":\"teen@example.com\",\"password\":\"long enough pw\",\"name\":\"김\"" + flags + "}"))
+                        .andExpect(status().isBadRequest());
+            }
+            assertThat(members.findByEmail("teen@example.com")).isEmpty();
+        }
+
+        @Test
+        @DisplayName("가입하면 언제 · 어느 판 약관에 동의했는지 남는다")
+        void consentRecorded() {
+            Member saved = members.findByEmail(EMAIL).orElseThrow();
+            assertThat(saved.getTermsAgreedAt()).isNotNull();
+            assertThat(saved.getTermsAgreedVia()).isEqualTo("FORM");
+            assertThat(saved.getTermsVersion()).isEqualTo(Member.CURRENT_TERMS_VERSION);
+        }
+
+        @Test
         @DisplayName("가입하면 비밀번호가 평문으로 저장되지 않는다")
         void passwordIsHashed() {
             Member saved = members.findByEmail(EMAIL).orElseThrow();
@@ -219,7 +251,7 @@ class AuthApiTest {
             mockMvc.perform(withCsrf(post("/api/auth/signup"))
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
-                                    {"email":"HONG@Example.com","password":"another password here","name":"홍길동"}
+                                    {"email":"HONG@Example.com","password":"another password here","name":"홍길동","agreeTerms":true,"over14":true}
                                     """))
                     .andExpect(status().isConflict())
                     .andExpect(jsonPath("$.code").value("EMAIL_ALREADY_REGISTERED"));
@@ -231,7 +263,7 @@ class AuthApiTest {
             String body = mockMvc.perform(withCsrf(post("/api/auth/signup"))
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
-                                    {"email":"hong@example.com","password":"another password here","name":"홍길동"}
+                                    {"email":"hong@example.com","password":"another password here","name":"홍길동","agreeTerms":true,"over14":true}
                                     """))
                     .andExpect(status().isConflict())
                     .andReturn().getResponse().getContentAsString();
@@ -245,7 +277,7 @@ class AuthApiTest {
             mockMvc.perform(withCsrf(post("/api/auth/signup"))
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
-                                    {"email":"new@example.com","password":"short","name":"김"}
+                                    {"email":"new@example.com","password":"short","name":"김","agreeTerms":true,"over14":true}
                                     """))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.code").value("WEAK_PASSWORD"))
@@ -264,7 +296,7 @@ class AuthApiTest {
             mockMvc.perform(withCsrf(post("/api/auth/signup"))
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
-                                    {"email":"long@example.com","password":"%s","name":"김"}
+                                    {"email":"long@example.com","password":"%s","name":"김","agreeTerms":true,"over14":true}
                                     """.formatted(tooLong)))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.code").value("WEAK_PASSWORD"));
@@ -276,7 +308,7 @@ class AuthApiTest {
             mockMvc.perform(withCsrf(post("/api/auth/signup"))
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
-                                    {"email":"minsu@example.com","password":"minsu12345678","name":"김"}
+                                    {"email":"minsu@example.com","password":"minsu12345678","name":"김","agreeTerms":true,"over14":true}
                                     """))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.code").value("WEAK_PASSWORD"));

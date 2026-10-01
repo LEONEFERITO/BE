@@ -19,21 +19,26 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
  * <p>{@code with(user(...))} 로 가짜 인증을 쓰지 않는다. 여기 테스트들은 "세션이 서버에서 끊겼는가" 를
  * 보기 때문에, 세션이 실제로 DB(SPRING_SESSION)에 있어야 한다.
  */
-final class MemberTestSupport {
+public final class MemberTestSupport {
 
     private MemberTestSupport() {
     }
 
     /** 테스트 사이 정리. FK 순서대로 지운다. */
-    static void cleanDatabase(JdbcTemplate jdbc) {
+    public static void cleanDatabase(JdbcTemplate jdbc) {
         jdbc.update("DELETE FROM spring_session");
+        // 주문·장바구니가 회원을 참조한다 (V13). 주문은 운영에서는 지우지 않지만 테스트는 매번 비운다.
+        jdbc.update("DELETE FROM order_event");
+        jdbc.update("DELETE FROM order_item");
+        jdbc.update("DELETE FROM orders");
+        jdbc.update("DELETE FROM cart_item");
         jdbc.update("DELETE FROM member_admin_log");
         jdbc.update("DELETE FROM password_reset_token");
         jdbc.update("DELETE FROM member");
     }
 
     /** 로그인해서 세션 쿠키를 돌려받는다. 브라우저 하나 = 쿠키 하나. */
-    static Cookie login(MockMvc mockMvc, String email, String password) throws Exception {
+    public static Cookie login(MockMvc mockMvc, String email, String password) throws Exception {
         MvcResult result = mockMvc.perform(csrf(mockMvc, post("/api/auth/login"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"%s\",\"password\":\"%s\"}".formatted(email, password)))
@@ -47,7 +52,7 @@ final class MemberTestSupport {
     }
 
     /** CSRF 토큰을 받아 요청에 붙인다. 세션 쿠키가 있으면 같이 싣는다. */
-    static MockHttpServletRequestBuilder csrf(MockMvc mockMvc, MockHttpServletRequestBuilder builder,
+    public static MockHttpServletRequestBuilder csrf(MockMvc mockMvc, MockHttpServletRequestBuilder builder,
                                               Cookie... cookies) throws Exception {
         MvcResult tokenResult = mockMvc.perform(get("/api/auth/csrf")).andReturn();
         String token = com.jayway.jsonpath.JsonPath.read(
@@ -58,7 +63,7 @@ final class MemberTestSupport {
         return builder.header("X-XSRF-TOKEN", token).cookie(all.toArray(Cookie[]::new));
     }
 
-    static long sessionCount(JdbcTemplate jdbc, String email) {
+    public static long sessionCount(JdbcTemplate jdbc, String email) {
         Long count = jdbc.queryForObject(
                 "SELECT count(*) FROM spring_session WHERE principal_name = ?", Long.class, email);
         return count == null ? 0 : count;
