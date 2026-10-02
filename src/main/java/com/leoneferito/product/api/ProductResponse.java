@@ -79,7 +79,11 @@ public final class ProductResponse {
     public record SizeChart(String url, String alt, Integer width, Integer height) {
     }
 
-    public record Image(String url, String kind, String alt) {
+    /**
+     * width · height: 원본 크기(모르면 null — WebP · AVIF 등). 화면이 자리를 미리 잡아
+     * 긴 상세 이미지가 늦게 떠도 아래 내용이 밀려 내려가지 않게 한다.
+     */
+    public record Image(String url, String kind, String alt, Integer width, Integer height) {
     }
 
     /** 상품정보제공고시 (V11). 공개된 상품은 넷 다 채워져 있다 (Product.hasNotice). */

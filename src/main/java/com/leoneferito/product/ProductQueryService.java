@@ -112,7 +112,9 @@ public class ProductQueryService {
         return new ProductResponse.Image(
                 mediaUrls.urlFor(image.getMedia()),
                 image.getKind().name(),
-                image.getAlt());
+                image.getAlt(),
+                image.getMedia().getWidth(),
+                image.getMedia().getHeight());
     }
 
     private ProductResponse.Sku toSku(ProductSku sku) {

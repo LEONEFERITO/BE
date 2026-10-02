@@ -113,8 +113,24 @@ public final class AdminProductRequests {
                     message = "인스타그램 주소(https://www.instagram.com/...)만 넣을 수 있습니다.")
             String instagramUrl,
 
-            @Valid List<Image> images,
+            @Valid @Size(max = 40) List<Image> images,
             @Valid List<Sku> skus) {
+
+        /**
+         * 메인 사진(대표 · 착용 · 디테일 · 누끼)은 종류마다 한 장, 상세 이미지는 {@value ProductImageKind#STORY_MAX} 장까지.
+         * 대표가 두 장이면 목록 카드에 무엇을 그릴지 정할 수 없다.
+         */
+        @AssertTrue(message = "메인 사진은 종류마다 한 장, 상세 이미지는 " + ProductImageKind.STORY_MAX + "장까지 올릴 수 있습니다.")
+        public boolean isImageCountValid() {
+            if (images == null) {
+                return true;
+            }
+            java.util.Map<ProductImageKind, Long> counts = images.stream()
+                    .filter(i -> i != null && i.kind() != null)
+                    .collect(java.util.stream.Collectors.groupingBy(Image::kind, java.util.stream.Collectors.counting()));
+            return counts.entrySet().stream().allMatch(e ->
+                    e.getValue() <= (e.getKey() == ProductImageKind.STORY ? ProductImageKind.STORY_MAX : 1));
+        }
 
         /**
          * 차트를 올렸으면 설명이 있어야 한다.

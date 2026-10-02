@@ -713,6 +713,62 @@ class AdminApiTest {
         }
     }
 
+    @Nested
+    @DisplayName("상세 이미지 (STORY)")
+    class StoryImages {
+
+        private String body(String slug, String imagesJson) {
+            return """
+                    {
+                      "slug": "%s", "name": "상품", "category": "SHIRT", "line": "LEONE",
+                      "priceKrw": 100000, "leadTimeDays": 10, "fabric": "면 100%%", "care": "드라이클리닝",
+                      "color": "브라운", "manufacturer": "레오네페리토", "countryOfOrigin": "대한민국",
+                      "manufacturedOn": "2026년 9월", "skus": [ { "size": "95" } ],
+                      "images": %s
+                    }
+                    """.formatted(slug, imagesJson);
+        }
+
+        @Test
+        @DisplayName("여러 장을 순서대로 올리고, 손님 상세에 그 순서 · 크기와 함께 나간다")
+        void storyInOrder() throws Exception {
+            String id = createProduct("with-story");
+            String main = uploadImage();
+            String first = uploadImage();
+            String second = uploadImage();
+            mockMvc.perform(asAdmin(put("/api/admin/products/" + id))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body("with-story", """
+                                    [ { "mediaId": "%s", "kind": "MAIN", "alt": "대표", "sortOrder": 0 },
+                                      { "mediaId": "%s", "kind": "STORY", "alt": "상세 1", "sortOrder": 100 },
+                                      { "mediaId": "%s", "kind": "STORY", "alt": "상세 2", "sortOrder": 101 } ]
+                                    """.formatted(main, first, second))))
+                    .andExpect(status().isNoContent());
+            mockMvc.perform(asAdmin(post("/api/admin/products/" + id + "/publish"))).andExpect(status().isNoContent());
+
+            mockMvc.perform(get("/api/products/with-story"))
+                    .andExpect(jsonPath("$.images[?(@.kind == 'STORY')].alt")
+                            .value(org.hamcrest.Matchers.contains("상세 1", "상세 2")))
+                    .andExpect(jsonPath("$.images[1].width").value(80))
+                    .andExpect(jsonPath("$.images[1].height").value(100));
+        }
+
+        @Test
+        @DisplayName("메인 사진은 종류마다 한 장 — 대표 두 장은 거부된다")
+        void oneMainOnly() throws Exception {
+            String id = createProduct("two-mains");
+            String a = uploadImage();
+            String b = uploadImage();
+            mockMvc.perform(asAdmin(put("/api/admin/products/" + id))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body("two-mains", """
+                                    [ { "mediaId": "%s", "kind": "MAIN", "alt": "a" },
+                                      { "mediaId": "%s", "kind": "MAIN", "alt": "b" } ]
+                                    """.formatted(a, b))))
+                    .andExpect(status().isBadRequest());
+        }
+    }
+
     // ── 도우미 ────────────────────────────────────────────────
 
     private String createProduct(String slug) throws Exception {

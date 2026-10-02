@@ -14,5 +14,13 @@ public enum ProductImageKind {
     /** 디테일컷. */
     DETAIL,
     /** 누끼샷. 배경이 없는 컷 — 단색 면 위에 올릴 때 쓴다. */
-    CUTOUT
+    CUTOUT,
+    /**
+     * 상세 이미지 (V17). 한국 쇼핑몰식 긴 상세페이지 이미지 — 여러 장, 손님 화면은 간격 없이 이어 붙인다.
+     * 메인 사진과 달리 여러 장이다 (최대 {@link #STORY_MAX}).
+     */
+    STORY;
+
+    /** 상세 이미지 최대 장수. 메인 사진 종류(나머지)는 종류마다 한 장이다. */
+    public static final int STORY_MAX = 30;
 }
