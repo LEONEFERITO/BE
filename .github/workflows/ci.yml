@@ -55,8 +55,16 @@ jobs:
       # Testcontainers 가 실제 PostgreSQL 18 을 띄운다 (H2 같은 대체 DB 를 쓰지 않는다 —
       # 방언이 달라 "테스트는 통과하는데 운영에서 깨지는" 문제가 생긴다).
       # ubuntu-latest 러너에는 Docker 가 기본 설치되어 있다.
+      #
+      # chmod 를 먼저 한다. Windows 에서 커밋된 gradlew 는 실행 비트가 없을 수 있고(Dockerfile 도 같은 이유로
+      # chmod 한다), 그러면 이 단계가 **1초 만에 exit 126** 으로 죽는다 — 테스트가 돌지 않았는데 "빌드 실패" 로만
+      # 보인다. 2026-09-28 초기 커밋부터 10-04 까지 CI 29회가 전부 이 이유로 실패했고, 그동안 테스트 스위트는
+      # CI 에서 한 번도 돌지 않았다. 인덱스의 모드도 100755 로 고쳤지만(git update-index --chmod=+x),
+      # 다음에 누가 Windows 에서 gradlew 를 갈아 끼워도 CI 가 조용히 죽지 않도록 여기서도 보장한다.
       - name: 빌드 및 테스트
-        run: ./gradlew build --no-daemon
+        run: |
+          chmod +x gradlew
+          ./gradlew build --no-daemon
 
       - name: 테스트 리포트 업로드
         if: always()
