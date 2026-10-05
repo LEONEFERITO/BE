@@ -169,6 +169,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/notices", "/api/notices/*", "/api/faqs").permitAll()
                         // 메인 WHY 구간 — 손님 화면을 빌드할 때 받는다
                         .requestMatchers(HttpMethod.GET, "/api/why").permitAll()
+                        // 사이트 사진 칸(매장 사진 등) — 같은 이유로 빌드 때 받는다
+                        .requestMatchers(HttpMethod.GET, "/api/site-images").permitAll()
                         .requestMatchers("/api/auth/signup", "/api/auth/login", "/api/auth/admin-login", "/api/auth/csrf",
                                 "/api/auth/social", "/api/auth/password-reset/**").permitAll()
                         // 간편 로그인 시작·콜백. 인증 전에 오는 주소라 열어 둔다.
