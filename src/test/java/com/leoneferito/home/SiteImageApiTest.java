@@ -77,12 +77,15 @@ class SiteImageApiTest {
     }
 
     @Test
-    @DisplayName("V20 이 심은 칸이 사진 없이 로그인 없이 읽힌다")
+    @DisplayName("V20 · V22 · V23 이 심은 칸(매장 1 + 라인 10 + 메인 2 + 룩북 4 + 브랜드 5)이 사진 없이 로그인 없이 읽힌다")
     void seededAndPublic() throws Exception {
         mockMvc.perform(get("/api/site-images"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$.length()").value(22))
                 .andExpect(jsonPath("$[0].slot").value("OFFLINE_SHOP"))
+                .andExpect(jsonPath("$[1].slot").value("LINE_LEONE_1"))
+                .andExpect(jsonPath("$[10].slot").value("LINE_FERITO_5"))
+                .andExpect(jsonPath("$[21].slot").value("BRAND_IMPRESSION"))
                 .andExpect(jsonPath("$[0].imageUrl").doesNotExist())
                 .andExpect(jsonPath("$[0].alt").value(""));
     }
@@ -130,6 +133,22 @@ class SiteImageApiTest {
                 .andExpect(jsonPath("$.imageUrl").doesNotExist());
         mockMvc.perform(get("/api/site-images"))
                 .andExpect(jsonPath("$[0].imageUrl").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("라인 페이지 칸(V22)도 같은 방법으로 바꾼다")
+    void lineSlotChanges() throws Exception {
+        MediaAsset media = mediaAssets.save(new MediaAsset(UUID.randomUUID(), "line.webp", ImageFormat.WEBP,
+                100_000L, 1200, 1600, "test/" + UUID.randomUUID() + ".webp"));
+        mockMvc.perform(csrf(mockMvc, put("/api/admin/site-images/LINE_FERITO_3"), admin)
+                        .contentType(MediaType.APPLICATION_JSON).content(body(media.getId().toString(), "페리토 셋째 칸")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.slot").value("LINE_FERITO_3"))
+                .andExpect(jsonPath("$.imageUrl").isNotEmpty());
+        mockMvc.perform(get("/api/site-images"))
+                .andExpect(jsonPath("$[?(@.slot == 'LINE_FERITO_3')].alt").value("페리토 셋째 칸"))
+                // 다른 칸은 그대로 비어 있다 (필터 결과는 목록이라 "mediaId 가 null 인 그 칸" 으로 찾는다)
+                .andExpect(jsonPath("$[?(@.slot == 'LINE_FERITO_2' && @.mediaId == null)].slot").value("LINE_FERITO_2"));
     }
 
     @Test
