@@ -4,6 +4,7 @@ import com.leoneferito.product.MeasurementPart;
 import com.leoneferito.product.ProductCategory;
 import com.leoneferito.product.ProductImageKind;
 import com.leoneferito.product.ProductLine;
+import com.leoneferito.product.ProductStyle;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Max;
@@ -63,6 +64,8 @@ public final class AdminProductRequests {
             @Size(max = NAME_MAX) String name,
             @NotNull ProductCategory category,
             @NotNull ProductLine line,
+            /** 세부 분류. 트라우저 · 신발만, 없으면 null (V21) */
+            ProductStyle style,
 
             // 원화. 소수 단위가 없으므로 정수다.
             @Positive Long priceKrw,
@@ -145,6 +148,12 @@ public final class AdminProductRequests {
         public boolean isSizeChartDescribed() {
             return sizeChartMediaId == null
                     || (sizeChartAlt != null && !sizeChartAlt.isBlank());
+        }
+
+        /** 세부 분류는 그 분류의 것이어야 한다 — 트라우저에 OXFORD 같은 조합을 400 으로 돌려준다. */
+        @AssertTrue(message = "세부 분류가 제품 분류와 맞지 않습니다.")
+        public boolean isStyleFitting() {
+            return category == null || ProductStyle.fits(style, category);
         }
     }
 

@@ -34,6 +34,8 @@ public final class ProductResponse {
             String summary,
             String category,
             String line,
+            /** 세부 분류(REGULAR · STRAIGHT · FLARE · OXFORD · LOAFER). 없으면 null */
+            String style,
             Long priceKrw,
             Long listPriceKrw,
             Image mainImage) {
@@ -46,6 +48,8 @@ public final class ProductResponse {
             String summary,
             String category,
             String line,
+            /** 세부 분류(REGULAR · STRAIGHT · FLARE · OXFORD · LOAFER). 없으면 null */
+            String style,
             Long priceKrw,
             Long listPriceKrw,
             String description,

@@ -54,6 +54,11 @@ public class Product {
     @Column(nullable = false)
     private ProductLine line;
 
+    /** 세부 분류(트라우저 핏 · 신발 종류). 없는 분류는 {@code null}. V21. */
+    @Enumerated(EnumType.STRING)
+    @Column
+    private ProductStyle style;
+
     /** 원화. 소수 단위가 없으므로 정수로 둔다. 미확정이면 {@code null}. */
     @Column(name = "price_krw")
     private Long priceKrw;
@@ -313,6 +318,18 @@ public class Product {
 
     public ProductLine getLine() {
         return line;
+    }
+
+    public ProductStyle getStyle() {
+        return style;
+    }
+
+    /** 분류와 짝이 맞지 않으면 거부한다 — 요청 검증이 먼저 막으므로 여기 걸리면 코드 버그다. */
+    public void setStyle(ProductStyle style) {
+        if (!ProductStyle.fits(style, category)) {
+            throw new IllegalArgumentException("세부 분류 " + style + " 는 " + category + " 에 붙을 수 없다");
+        }
+        this.style = style;
     }
 
     public Long getPriceKrw() {

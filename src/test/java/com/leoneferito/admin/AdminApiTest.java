@@ -788,6 +788,85 @@ class AdminApiTest {
         return com.jayway.jsonpath.JsonPath.read(r.getResponse().getContentAsString(), "$.id");
     }
 
+    @Nested
+    @DisplayName("세부 분류 (V21)")
+    class StyleField {
+
+        private String body(String slug, String category, String styleJson, String mediaId) {
+            return """
+                    {
+                      "slug": "%s",
+                      "name": "상품",
+                      "category": "%s",
+                      "line": "LEONE",
+                      "style": %s,
+                      "priceKrw": 100000,
+                      "leadTimeDays": 10,
+                      "fabric": "울 100%%",
+                      "care": "드라이클리닝",
+                      "color": "블랙",
+                      "manufacturer": "레오네페리토",
+                      "countryOfOrigin": "대한민국",
+                      "manufacturedOn": "2026년 10월",
+                      "images": %s
+                    }
+                    """.formatted(slug, category, styleJson,
+                    mediaId == null ? "[]" : "[ { \"mediaId\": \"" + mediaId + "\", \"kind\": \"MAIN\", \"alt\": \"대표\" } ]");
+        }
+
+        @Test
+        @DisplayName("트라우저 핏이 저장되고 관리자 · 손님 응답에 나온다")
+        void trousersFitRoundTrips() throws Exception {
+            String id = com.jayway.jsonpath.JsonPath.read(mockMvc.perform(asAdmin(post("/api/admin/products"))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body("flare-pants", "TROUSERS", "\"FLARE\"", uploadImage())))
+                    .andExpect(status().isCreated())
+                    .andReturn().getResponse().getContentAsString(), "$.id");
+
+            mockMvc.perform(asAdmin(get("/api/admin/products/" + id)))
+                    .andExpect(jsonPath("$.style").value("FLARE"));
+            mockMvc.perform(asAdmin(post("/api/admin/products/" + id + "/publish")))
+                    .andExpect(status().isNoContent());
+
+            mockMvc.perform(get("/api/products/flare-pants"))
+                    .andExpect(jsonPath("$.style").value("FLARE"));
+            mockMvc.perform(get("/api/products").param("category", "TROUSERS"))
+                    .andExpect(jsonPath("$[?(@.slug == 'flare-pants')].style").value("FLARE"));
+        }
+
+        @Test
+        @DisplayName("셔츠에 트라우저 핏 · 트라우저에 신발 종류는 거부된다 (400)")
+        void wrongPairRejected() throws Exception {
+            mockMvc.perform(asAdmin(post("/api/admin/products"))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body("shirt-flare", "SHIRT", "\"FLARE\"", null)))
+                    .andExpect(status().isBadRequest());
+            mockMvc.perform(asAdmin(post("/api/admin/products"))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body("pants-oxford", "TROUSERS", "\"OXFORD\"", null)))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @DisplayName("세부 분류가 없는 상품은 null — 기존 상품 그대로")
+        void absentIsNull() throws Exception {
+            String id = createProduct("plain-shirt");
+            mockMvc.perform(asAdmin(get("/api/admin/products/" + id)))
+                    .andExpect(jsonPath("$.style").value(org.hamcrest.Matchers.nullValue()));
+        }
+
+        @Test
+        @DisplayName("수정은 저장된 분류로 본다 — 셔츠 상품에 트라우저로 실어 보낸 핏은 400")
+        void updateUsesStoredCategory() throws Exception {
+            String id = createProduct("stored-shirt");
+            mockMvc.perform(asAdmin(put("/api/admin/products/" + id))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body("stored-shirt", "TROUSERS", "\"REGULAR\"", null)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("STYLE_MISMATCH"));
+        }
+    }
+
     private void attachImageAndPublish(String id, String slug, String mediaId) throws Exception {
         mockMvc.perform(asAdmin(put("/api/admin/products/" + id))
                         .contentType(MediaType.APPLICATION_JSON)

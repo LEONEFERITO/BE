@@ -63,6 +63,7 @@ public class ProductQueryService {
                 p.getSummary(),
                 p.getCategory().name(),
                 p.getLine().name(),
+                p.getStyle() == null ? null : p.getStyle().name(),
                 p.getPriceKrw(),
                 p.getListPriceKrw(),
                 p.mainImage().map(this::toImage).orElse(null));
@@ -75,6 +76,7 @@ public class ProductQueryService {
                 p.getSummary(),
                 p.getCategory().name(),
                 p.getLine().name(),
+                p.getStyle() == null ? null : p.getStyle().name(),
                 p.getPriceKrw(),
                 p.getListPriceKrw(),
                 p.getDescription(),

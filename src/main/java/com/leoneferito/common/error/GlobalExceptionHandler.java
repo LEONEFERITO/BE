@@ -345,6 +345,13 @@ public class GlobalExceptionHandler {
 						currentTraceId()));
 	}
 
+	/** 수정 요청의 세부 분류가 저장된 분류와 맞지 않는다 (트라우저 상품에 OXFORD 등). 400. */
+	@ExceptionHandler(com.leoneferito.product.AdminProductService.StyleMismatchException.class)
+	public ResponseEntity<ErrorResponse> handleStyleMismatch(com.leoneferito.product.AdminProductService.StyleMismatchException e) {
+		return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+				.body(ErrorResponse.of("STYLE_MISMATCH", e.getMessage(), currentTraceId()));
+	}
+
 	/**
 	 * 도메인 규칙 위반 (예: 값이 덜 찬 상품을 공개하려 함). 409 다.
 	 *

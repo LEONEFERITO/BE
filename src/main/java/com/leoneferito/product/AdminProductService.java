@@ -67,6 +67,11 @@ public class AdminProductService {
         if (!product.getSlug().equals(request.slug())) {
             throw new SlugChangeNotAllowedException(product.getSlug());
         }
+        // 분류는 수정에서 바뀌지 않는다(등록 때 정해진 값). 세부 분류는 **저장된** 분류와 맞아야 한다 —
+        // 요청 검증은 요청에 실린 분류로 봤으므로, 화면이 다른 분류를 실어 보내면 여기서 걸린다.
+        if (!ProductStyle.fits(request.style(), product.getCategory())) {
+            throw new StyleMismatchException();
+        }
 
         apply(product, request);
         log.info("상품 수정 productId={}", id);
@@ -118,6 +123,7 @@ public class AdminProductService {
 
     private void apply(Product product, AdminProductRequests.Save request) {
         product.setName(request.name());
+        product.setStyle(request.style());
         product.setSummary(request.summary());
         product.setPriceKrw(request.priceKrw());
         product.setListPriceKrw(request.listPriceKrw());
@@ -215,6 +221,13 @@ public class AdminProductService {
     public static class SlugChangeNotAllowedException extends RuntimeException {
         public SlugChangeNotAllowedException(String slug) {
             super("slug 변경 불가: " + slug);
+        }
+    }
+
+    /** 세부 분류가 저장된 분류와 맞지 않는다 (수정 요청). 400. */
+    public static class StyleMismatchException extends RuntimeException {
+        public StyleMismatchException() {
+            super("세부 분류가 제품 분류와 맞지 않습니다.");
         }
     }
 }
