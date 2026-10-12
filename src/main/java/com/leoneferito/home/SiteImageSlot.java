@@ -19,8 +19,6 @@ public enum SiteImageSlot {
     /** 룩북 컬렉션 컷 — 레오네 둘 · 페리토 둘 (V23). */
     LOOKBOOK_LEONE_1, LOOKBOOK_LEONE_2, LOOKBOOK_FERITO_1, LOOKBOOK_FERITO_2,
     /** 브랜드 페이지 — 히어로 사진 · 사진 구간 셋 · 첫인상 배경 (V23). */
-    BRAND_HERO, BRAND_PHOTO_1, BRAND_PHOTO_2, BRAND_PHOTO_3, BRAND_IMPRESSION,
-
-    /** 메인 배너를 직접 올릴 때(hero_config.mode = CUSTOM) — 가운데 인물 · 왼쪽 아래 액자 · 오른쪽 위 액자 (V24). */
-    HERO_FIGURE, HERO_FRAME_LEFT, HERO_FRAME_RIGHT
+    BRAND_HERO, BRAND_PHOTO_1, BRAND_PHOTO_2, BRAND_PHOTO_3, BRAND_IMPRESSION
+    // V24 의 HERO_* 세 칸은 V25 에서 걷었다 — 배너 사진은 배너(hero_banner)가 직접 가진다
 }

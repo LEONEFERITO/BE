@@ -2,11 +2,14 @@ package com.leoneferito.home;
 
 import static com.leoneferito.member.MemberTestSupport.csrf;
 import static com.leoneferito.member.MemberTestSupport.login;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.jayway.jsonpath.JsonPath;
 import com.leoneferito.TestMailConfiguration;
 import com.leoneferito.TestcontainersConfiguration;
 import com.leoneferito.auth.AuthService;
@@ -36,7 +39,7 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 
-/** 사이트 사진 칸(V20) — 손님 읽기 · 관리자 바꾸기 · 비우기 · 권한. 메인 배너 설정(V24)도 여기서. */
+/** 사이트 사진 칸(V20) — 손님 읽기 · 관리자 바꾸기 · 비우기 · 권한. 메인 배너 목록(V25)도 여기서. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import({TestcontainersConfiguration.class, TestMailConfiguration.class})
@@ -78,8 +81,7 @@ class SiteImageApiTest {
     void cleanUp() {
         // 칸은 지우지 않는다(마이그레이션이 심은 행이다). 비워서 처음 상태로 돌려 둔다 — 다른 테스트가 기본 상태를 본다.
         jdbc.update("UPDATE site_image SET media_id = NULL, alt = ''");
-        jdbc.update("UPDATE hero_config SET mode = 'AUTO', product_id = NULL, eyebrow = '', title = '', subtitle = '',"
-                + " cta_label = '', cta_url = ''");
+        jdbc.update("DELETE FROM hero_banner");
         jdbc.update("DELETE FROM product WHERE slug IN ('hero-shirt', 'hero-draft')");
         MemberTestSupport.cleanDatabase(jdbc);
     }
@@ -89,13 +91,11 @@ class SiteImageApiTest {
     }
 
     @Test
-    @DisplayName("V20 · V22 · V23 · V24 가 심은 칸(매장 1 + 라인 10 + 메인 2 + 룩북 4 + 브랜드 5 + 배너 3)이 사진 없이 로그인 없이 읽힌다")
+    @DisplayName("V20 · V22 · V23 이 심은 칸(매장 1 + 라인 10 + 메인 2 + 룩북 4 + 브랜드 5)이 사진 없이 로그인 없이 읽힌다. V24 배너 칸은 V25 가 걷었다")
     void seededAndPublic() throws Exception {
         mockMvc.perform(get("/api/site-images"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(25))
-                .andExpect(jsonPath("$[22].slot").value("HERO_FIGURE"))
-                .andExpect(jsonPath("$[24].slot").value("HERO_FRAME_RIGHT"))
+                .andExpect(jsonPath("$.length()").value(22))
                 .andExpect(jsonPath("$[0].slot").value("OFFLINE_SHOP"))
                 .andExpect(jsonPath("$[1].slot").value("LINE_LEONE_1"))
                 .andExpect(jsonPath("$[10].slot").value("LINE_FERITO_5"))
@@ -176,21 +176,39 @@ class SiteImageApiTest {
                 .andExpect(status().isForbidden());
     }
 
-    // ── 메인 배너 (V24) ──────────────────────────────────────
+    // ── 메인 배너 목록 (V25) ─────────────────────────────────
 
-    private static final String HERO_URL = "/api/admin/hero";
+    private static final String BANNERS = "/api/admin/hero-banners";
 
-    private String hero(String mode, String productId, String ctaUrl) {
-        return "{\"mode\":" + (mode == null ? "null" : "\"" + mode + "\"")
-                + ",\"productId\":" + (productId == null ? "null" : "\"" + productId + "\"")
+    private static String q(String v) {
+        return v == null ? "null" : "\"" + v + "\"";
+    }
+
+    private String banner(String kind, String productId, String figureId, String ctaUrl, boolean visible) {
+        return "{\"kind\":" + q(kind) + ",\"productId\":" + q(productId)
                 + ",\"eyebrow\":\"  26FW  \",\"title\":\"가을 아우터\",\"subtitle\":\"새 시즌\""
-                + ",\"ctaLabel\":\"보러 가기\",\"ctaUrl\":" + (ctaUrl == null ? "null" : "\"" + ctaUrl + "\"") + "}";
+                + ",\"ctaLabel\":\"보러 가기\",\"ctaUrl\":" + q(ctaUrl)
+                + ",\"figure\":" + (figureId == null ? "null" : "{\"mediaId\":" + q(figureId) + ",\"alt\":\" 인물 \"}")
+                + ",\"frameLeft\":null,\"frameRight\":{\"mediaId\":null,\"alt\":\"\"}"
+                + ",\"visible\":" + visible + "}";
+    }
+
+    private MediaAsset image(String name) {
+        return mediaAssets.save(new MediaAsset(UUID.randomUUID(), name + ".webp", ImageFormat.WEBP,
+                100_000L, 1200, 1600, "test/" + UUID.randomUUID() + ".webp"));
+    }
+
+    private String create(String body) throws Exception {
+        String res = mockMvc.perform(csrf(mockMvc, post(BANNERS), admin)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        return JsonPath.read(res, "$.id");
     }
 
     /** 공개할 수 있는 상품 하나(이름 · 가격 · 제작 기간 · 대표 사진). publish 하지 않으면 초안이다. */
     private Product product(String slug, boolean publish) {
-        MediaAsset media = mediaAssets.save(new MediaAsset(UUID.randomUUID(), slug + ".webp", ImageFormat.WEBP,
-                100_000L, 1200, 1600, "test/" + UUID.randomUUID() + ".webp"));
+        MediaAsset media = image(slug);
         Product p = new Product(UUID.randomUUID(), slug, ProductCategory.SHIRT, ProductLine.LEONE);
         p.setName("배너 셔츠");
         p.setPriceKrw(290_000L);
@@ -207,90 +225,142 @@ class SiteImageApiTest {
     }
 
     @Test
-    @DisplayName("배너 설정은 처음에 자동(AUTO)이고 로그인 없이 읽힌다")
-    void heroDefaultsToAuto() throws Exception {
-        mockMvc.perform(get("/api/hero"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.mode").value("AUTO"))
-                .andExpect(jsonPath("$.productSlug").doesNotExist())
-                .andExpect(jsonPath("$.title").value(""));
+    @DisplayName("배너는 처음에 없고, 손님 목록은 로그인 없이 읽힌다(빈 목록 — 화면은 진열 순서 맨 앞 상품으로)")
+    void bannersStartEmpty() throws Exception {
+        mockMvc.perform(get("/api/hero-banners")).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
+        mockMvc.perform(get(BANNERS).cookie(admin)).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
     }
 
     @Test
-    @DisplayName("상품 지정 — 공개 상품만 고를 수 있고, 손님에게는 주소(slug)로 나간다")
-    void heroProductMode() throws Exception {
+    @DisplayName("상품 정보 가져오기 — 공개 상품만, 손님에게는 주소(slug)로. 끄면 안 나가고, 상품이 지워지면 배너도 지워진다")
+    void productBanner() throws Exception {
         Product shirt = product("hero-shirt", true);
         Product draft = product("hero-draft", false);
 
-        mockMvc.perform(csrf(mockMvc, put(HERO_URL), admin)
-                        .contentType(MediaType.APPLICATION_JSON).content(hero("PRODUCT", shirt.getId().toString(), "")))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.mode").value("PRODUCT"))
-                .andExpect(jsonPath("$.productId").value(shirt.getId().toString()))
-                .andExpect(jsonPath("$.productSlug").value("hero-shirt"));
-        mockMvc.perform(get("/api/hero"))
-                .andExpect(jsonPath("$.mode").value("PRODUCT"))
-                .andExpect(jsonPath("$.productSlug").value("hero-shirt"))
+        String id = create(banner("PRODUCT", shirt.getId().toString(), null, "", true));
+        mockMvc.perform(get(BANNERS).cookie(admin))
+                .andExpect(jsonPath("$[0].kind").value("PRODUCT"))
+                .andExpect(jsonPath("$[0].productId").value(shirt.getId().toString()))
+                .andExpect(jsonPath("$[0].eyebrow").value("26FW"))
+                .andExpect(jsonPath("$[0].shown").value(true));
+        mockMvc.perform(get("/api/hero-banners"))
+                .andExpect(jsonPath("$[0].productSlug").value("hero-shirt"))
                 // 손님 쪽에는 내부 id 가 나가지 않는다
-                .andExpect(jsonPath("$.productId").doesNotExist());
+                .andExpect(jsonPath("$[0].productId").doesNotExist())
+                .andExpect(jsonPath("$[0].figure").doesNotExist());
 
-        // 상품 없이 상품 지정 → 400, 초안 상품 → 404. 둘 다 저장된 값이 그대로 남는다
-        mockMvc.perform(csrf(mockMvc, put(HERO_URL), admin)
-                        .contentType(MediaType.APPLICATION_JSON).content(hero("PRODUCT", null, "")))
+        // 상품 없이 → 400, 초안 상품 → 404
+        mockMvc.perform(csrf(mockMvc, post(BANNERS), admin).contentType(MediaType.APPLICATION_JSON)
+                        .content(banner("PRODUCT", null, null, "", true)))
                 .andExpect(status().isBadRequest());
-        mockMvc.perform(csrf(mockMvc, put(HERO_URL), admin)
-                        .contentType(MediaType.APPLICATION_JSON).content(hero("PRODUCT", draft.getId().toString(), "")))
+        mockMvc.perform(csrf(mockMvc, put(BANNERS + "/" + id), admin).contentType(MediaType.APPLICATION_JSON)
+                        .content(banner("PRODUCT", draft.getId().toString(), null, "", true)))
                 .andExpect(status().isNotFound());
-        mockMvc.perform(get("/api/hero")).andExpect(jsonPath("$.productSlug").value("hero-shirt"));
 
-        // 상품이 지워지면 DB 가 비운다(ON DELETE SET NULL) — 손님 화면은 자동으로 돌아간다
+        // 끄면 손님 목록에서 빠진다 — 관리자 목록에는 남고 shown=false
+        mockMvc.perform(csrf(mockMvc, put(BANNERS + "/" + id), admin).contentType(MediaType.APPLICATION_JSON)
+                        .content(banner("PRODUCT", shirt.getId().toString(), null, "", false)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.visible").value(false))
+                .andExpect(jsonPath("$.shown").value(false));
+        mockMvc.perform(get("/api/hero-banners")).andExpect(jsonPath("$.length()").value(0));
+
+        // 상품이 지워지면 그 배너도 지워진다(ON DELETE CASCADE)
         jdbc.update("DELETE FROM product WHERE slug = 'hero-shirt'");
-        mockMvc.perform(get("/api/hero")).andExpect(jsonPath("$.productSlug").doesNotExist());
+        mockMvc.perform(get(BANNERS).cookie(admin)).andExpect(jsonPath("$.length()").value(0));
     }
 
     @Test
-    @DisplayName("직접 올리기 — 문구는 앞뒤 공백을 걷고, 버튼 주소는 사이트 안 주소나 https 만 받는다")
-    void heroCustomMode() throws Exception {
-        mockMvc.perform(csrf(mockMvc, put(HERO_URL), admin)
-                        .contentType(MediaType.APPLICATION_JSON).content(hero("CUSTOM", null, "/category/jacket/")))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.mode").value("CUSTOM"))
-                .andExpect(jsonPath("$.productId").doesNotExist())
-                .andExpect(jsonPath("$.eyebrow").value("26FW"))
-                .andExpect(jsonPath("$.ctaUrl").value("/category/jacket/"));
+    @DisplayName("직접 등록 — 인물 사진이 있어야 하고, 문구는 공백을 걷고, 버튼 주소는 사이트 안 주소나 https 만")
+    void customBanner() throws Exception {
+        MediaAsset figure = image("figure");
+        String fig = figure.getId().toString();
+        String id = create(banner("CUSTOM", null, fig, "/category/jacket/", true));
+        mockMvc.perform(get("/api/hero-banners"))
+                .andExpect(jsonPath("$[0].kind").value("CUSTOM"))
+                .andExpect(jsonPath("$[0].eyebrow").value("26FW"))
+                .andExpect(jsonPath("$[0].ctaUrl").value("/category/jacket/"))
+                .andExpect(jsonPath("$[0].figure.url").isNotEmpty())
+                .andExpect(jsonPath("$[0].figure.alt").value("인물"))
+                // 비운 액자는 없다 — 화면이 인물 사진을 잘라 쓴다
+                .andExpect(jsonPath("$[0].frameLeft").doesNotExist())
+                .andExpect(jsonPath("$[0].frameRight").doesNotExist());
 
-        mockMvc.perform(csrf(mockMvc, put(HERO_URL), admin)
-                        .contentType(MediaType.APPLICATION_JSON).content(hero("CUSTOM", null, "https://www.instagram.com/leoneferito_/")))
+        mockMvc.perform(csrf(mockMvc, put(BANNERS + "/" + id), admin).contentType(MediaType.APPLICATION_JSON)
+                        .content(banner("CUSTOM", null, fig, "https://www.instagram.com/leoneferito_/", true)))
                 .andExpect(status().isOk());
 
+        // 인물 사진 없이 → 400, 없는 이미지 → 404
+        mockMvc.perform(csrf(mockMvc, post(BANNERS), admin).contentType(MediaType.APPLICATION_JSON)
+                        .content(banner("CUSTOM", null, null, "", true)))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(csrf(mockMvc, post(BANNERS), admin).contentType(MediaType.APPLICATION_JSON)
+                        .content(banner("CUSTOM", null, UUID.randomUUID().toString(), "", true)))
+                .andExpect(status().isNotFound());
         // 밖으로 새는 주소 · 스크립트 주소는 400
         for (String bad : new String[] {"//evil.example", "javascript:alert(1)", "http://plain.example", "category"}) {
-            mockMvc.perform(csrf(mockMvc, put(HERO_URL), admin)
-                            .contentType(MediaType.APPLICATION_JSON).content(hero("CUSTOM", null, bad)))
+            mockMvc.perform(csrf(mockMvc, put(BANNERS + "/" + id), admin).contentType(MediaType.APPLICATION_JSON)
+                            .content(banner("CUSTOM", null, fig, bad, true)))
                     .andExpect(status().isBadRequest());
         }
-        // 모드가 없거나 모르는 값이면 400
-        mockMvc.perform(csrf(mockMvc, put(HERO_URL), admin)
-                        .contentType(MediaType.APPLICATION_JSON).content(hero(null, null, "")))
+        // 종류가 없거나 모르는 값, 제목 61자 → 400
+        mockMvc.perform(csrf(mockMvc, post(BANNERS), admin).contentType(MediaType.APPLICATION_JSON)
+                        .content(banner(null, null, fig, "", true)))
                 .andExpect(status().isBadRequest());
-        mockMvc.perform(csrf(mockMvc, put(HERO_URL), admin)
-                        .contentType(MediaType.APPLICATION_JSON).content(hero("BANNER", null, "")))
+        mockMvc.perform(csrf(mockMvc, post(BANNERS), admin).contentType(MediaType.APPLICATION_JSON)
+                        .content(banner("AUTO", null, fig, "", true)))
                 .andExpect(status().isBadRequest());
-        // 제목이 CHECK(60자)를 넘으면 DB 까지 가지 않고 400
-        mockMvc.perform(csrf(mockMvc, put(HERO_URL), admin)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"mode\":\"CUSTOM\",\"title\":\"" + "가".repeat(61) + "\"}"))
+        mockMvc.perform(csrf(mockMvc, post(BANNERS), admin).contentType(MediaType.APPLICATION_JSON)
+                        .content(banner("CUSTOM", null, fig, "", true).replace("가을 아우터", "가".repeat(61))))
                 .andExpect(status().isBadRequest());
+
+        // 상품 배너로 바꾸면 사진은 걷힌다
+        Product shirt = product("hero-shirt", true);
+        mockMvc.perform(csrf(mockMvc, put(BANNERS + "/" + id), admin).contentType(MediaType.APPLICATION_JSON)
+                        .content(banner("PRODUCT", shirt.getId().toString(), fig, "", true)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.figure").doesNotExist());
     }
 
     @Test
-    @DisplayName("손님은 배너 설정을 바꿀 수 없다")
-    void memberCannotChangeHero() throws Exception {
+    @DisplayName("순서 바꾸기 · 지우기 · 최대 개수 — 옛 목록으로 정렬하면 409")
+    void orderDeleteAndLimit() throws Exception {
+        String fig = image("figure").getId().toString();
+        String a = create(banner("CUSTOM", null, fig, "/a/", true));
+        String b = create(banner("CUSTOM", null, fig, "/b/", true));
+        String c = create(banner("CUSTOM", null, fig, "/c/", true));
+
+        mockMvc.perform(csrf(mockMvc, put(BANNERS + "/order"), admin).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"ids\":[" + q(c) + "," + q(a) + "," + q(b) + "]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(c))
+                .andExpect(jsonPath("$[2].id").value(b));
+        mockMvc.perform(get("/api/hero-banners")).andExpect(jsonPath("$[0].ctaUrl").value("/c/"));
+
+        mockMvc.perform(csrf(mockMvc, put(BANNERS + "/order"), admin).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"ids\":[" + q(a) + "," + q(b) + "]}"))
+                .andExpect(status().isConflict());
+
+        mockMvc.perform(csrf(mockMvc, delete(BANNERS + "/" + a), admin)).andExpect(status().isNoContent());
+        mockMvc.perform(csrf(mockMvc, delete(BANNERS + "/" + a), admin)).andExpect(status().isNotFound());
+
+        // 지금 둘 — 최대 개수까지 채우고 하나 더
+        for (int i = 2; i < SiteImageService.MAX_BANNERS; i++) {
+            create(banner("CUSTOM", null, fig, "", false));
+        }
+        mockMvc.perform(csrf(mockMvc, post(BANNERS), admin).contentType(MediaType.APPLICATION_JSON)
+                        .content(banner("CUSTOM", null, fig, "", true)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("BANNER_LIMIT"));
+    }
+
+    @Test
+    @DisplayName("손님은 배너를 만들 수도, 관리자 목록을 볼 수도 없다")
+    void memberCannotChangeBanners() throws Exception {
         Cookie buyer = login(mockMvc, "buyer@example.com", PASSWORD);
-        mockMvc.perform(csrf(mockMvc, put(HERO_URL), buyer)
-                        .contentType(MediaType.APPLICATION_JSON).content(hero("AUTO", null, "")))
+        mockMvc.perform(csrf(mockMvc, post(BANNERS), buyer).contentType(MediaType.APPLICATION_JSON)
+                        .content(banner("CUSTOM", null, null, "", true)))
                 .andExpect(status().isForbidden());
-        mockMvc.perform(get("/api/admin/hero").cookie(buyer))
-                .andExpect(status().isForbidden());
+        mockMvc.perform(get(BANNERS).cookie(buyer)).andExpect(status().isForbidden());
     }
 }

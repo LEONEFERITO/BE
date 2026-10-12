@@ -238,6 +238,13 @@ public class GlobalExceptionHandler {
 				.body(ErrorResponse.of("STALE_LIST", e.getMessage(), currentTraceId()));
 	}
 
+	/** 메인 배너가 이미 최대 개수다. 409. */
+	@ExceptionHandler(com.leoneferito.home.SiteImageService.BannerLimitException.class)
+	public ResponseEntity<ErrorResponse> handleBannerLimit(com.leoneferito.home.SiteImageService.BannerLimitException e) {
+		return ResponseEntity.status(HttpStatus.CONFLICT)
+				.body(ErrorResponse.of("BANNER_LIMIT", e.getMessage(), currentTraceId()));
+	}
+
 	/** 임시 비밀번호 관리자 — 비밀번호를 바꾸기 전에는 관리자 API 를 못 쓴다. 403. */
 	@ExceptionHandler(com.leoneferito.auth.AdminPasswordGate.PasswordChangeRequiredException.class)
 	public ResponseEntity<ErrorResponse> handlePasswordChangeRequired(
