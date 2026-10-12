@@ -118,7 +118,7 @@ app:
       api-base: https://api.tosspayments.com
   mail:
     # 보내는 사람. SMTP 서버가 이 주소로 보낼 권한이 있어야 한다(SPF/DKIM). TODO(고객확인) 발신 주소
-    from: ${MAIL_FROM:LEONE FERITO <no-reply@leoneferito.com>}
+    from: ${MAIL_FROM:LEONE FERITO <no-reply@leoneferito.kr>}
   social:
     # 간편가입 제공자. client-id 가 비어 있으면 그 제공자는 꺼진다 —
     # 버튼이 안 나오고, 시작 주소로 들어와도 401 이다. 키 없이도 사이트는 뜬다.

@@ -1,13 +1,17 @@
 # ─────────────────────────────────────────────────────────────
-# 운영 구성 — VM 한 대에 API · PostgreSQL · 리버스 프록시(Caddy).
+# 운영 구성 — Lightsail 한 대에 손님 화면 · API · PostgreSQL · 리버스 프록시(Caddy).
 #
 #   cp .env.example .env   →  운영 값 채우기 (README.md "배포" 참고)
 #   docker compose -f docker-compose.prod.yml up -d --build
-#   docker compose -f docker-compose.prod.yml logs -f api
+#   docker compose -f docker-compose.prod.yml logs -f api front
 #
-# 인터넷에 열리는 건 Caddy 의 80/443 뿐이다. API 와 DB 는 compose 내부 네트워크에만 있다.
-# HTTPS 인증서는 Caddy 가 Let's Encrypt 에서 자동으로 받고 갱신한다 — 도메인의 DNS 가
+# 인터넷에 열리는 건 Caddy 의 80/443 뿐이다. API · DB · 빌더는 compose 내부 네트워크에만 있다.
+# HTTPS 인증서는 Caddy 가 Let's Encrypt 에서 자동으로 받고 갱신한다 — 각 도메인의 DNS 가
 # 이 서버를 가리키고 80/443 이 열려 있어야 한다.
+#
+# 손님 화면(FE)은 정적 파일이다. front(빌더)가 같은 서버의 FE 저장소(../FE)를 빌드해 site 볼륨에 두고,
+# Caddy 가 그 볼륨을 서빙한다. 관리자가 상품을 공개 · 수정하면 API 가 빌더를 불러 다시 빌드한다
+# (전에는 Vercel 배포 훅이 이 일을 했다).
 #
 # 이 파일은 "인스턴스 하나" 전제다. 두 대 이상으로 늘리려면 업로드 이미지를
 # 객체 스토리지로 옮기고(D7) DB 를 분리해야 한다.
@@ -28,6 +32,12 @@ services:
       DB_HOST: db
       DB_PORT: "5432"
       MEDIA_STORAGE_DIR: /var/lib/leoneferito/media
+      # 아래 넷은 도메인에서 만들어진다 — .env 에 따로 적지 않는다(두 군데 적으면 어긋난다).
+      MEDIA_BASE_URL: https://${API_DOMAIN:?API_DOMAIN 이 .env 에 없다}/media
+      FRONT_BASE_URL: https://${SITE_DOMAIN:?SITE_DOMAIN 이 .env 에 없다}
+      CORS_ALLOWED_ORIGINS: https://${SITE_DOMAIN}
+      # 상품 공개 · 수정 뒤 손님 화면 다시 빌드 — 같은 서버의 빌더(front). 내부 주소라 바깥에서는 닿지 않는다.
+      FRONT_DEPLOY_HOOK_URL: http://front:9000/rebuild?token=${FRONT_REBUILD_TOKEN:?FRONT_REBUILD_TOKEN 이 .env 에 없다}
     volumes:
       - media-data:/var/lib/leoneferito/media
     depends_on:
@@ -68,6 +78,39 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # 손님 화면 빌더 — deploy/front-builder/server.mjs. FE 저장소를 읽어 next build 한 뒤 site 볼륨에 올린다.
+  front:
+    build:
+      context: ./deploy/front-builder
+    image: leoneferito-front-builder:latest
+    container_name: leoneferito-front
+    restart: unless-stopped
+    environment:
+      REBUILD_TOKEN: ${FRONT_REBUILD_TOKEN:?FRONT_REBUILD_TOKEN 이 .env 에 없다}
+      # 브라우저가 부르는 API 주소와 사이트 주소. 빌드 결과물에 박힌다(공개 값).
+      NEXT_PUBLIC_API_BASE: https://${API_DOMAIN}
+      NEXT_PUBLIC_SITE_URL: https://${SITE_DOMAIN}
+      NEXT_PUBLIC_TOSS_CLIENT_KEY: ${TOSS_CLIENT_KEY:-}
+      # 빌드할 때 상품 · 사진을 받아 오는 주소 — 바깥 도메인을 돌지 않고 내부로 바로 간다.
+      # 그래서 DNS · 인증서가 준비되기 전에도 첫 빌드가 된다.
+      API_BUILD_BASE: http://api:8080
+      BUILD_MEMORY_MB: ${FRONT_BUILD_MEMORY_MB:-1536}
+    volumes:
+      # 같은 서버에 받아 둔 FE 저장소. 기본은 BE 옆의 ../FE (/opt/leoneferito/FE)
+      - ${FRONT_SRC_DIR:-../FE}:/src:ro
+      - front-work:/work
+      - site-data:/site
+    expose:
+      - "9000"
+    depends_on:
+      api:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   caddy:
     image: caddy:2-alpine
     container_name: leoneferito-caddy
@@ -78,13 +121,23 @@ services:
       - "443:443/udp"
     environment:
       API_DOMAIN: ${API_DOMAIN:?API_DOMAIN 이 .env 에 없다}
+      SITE_DOMAIN: ${SITE_DOMAIN:?SITE_DOMAIN 이 .env 에 없다}
+      SITE_ADDRESSES: ${SITE_ADDRESSES:?SITE_ADDRESSES 가 .env 에 없다}
+      SITE_ROBOTS: ${SITE_ROBOTS:-noindex, nofollow}
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # 빌더가 만든 손님 화면. Caddy 는 읽기만 한다.
+      - site-data:/srv/site:ro
       # 인증서와 계정 키. 지우면 Let's Encrypt 발급 한도에 걸릴 수 있으니 볼륨으로 보존한다.
       - caddy-data:/data
       - caddy-config:/config
     depends_on:
       - api
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   db-data:
@@ -95,3 +148,7 @@ volumes:
     name: leoneferito-prod-caddy-data
   caddy-config:
     name: leoneferito-prod-caddy-config
+  site-data:
+    name: leoneferito-prod-site
+  front-work:
+    name: leoneferito-prod-front-work

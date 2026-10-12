@@ -42,7 +42,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
  * 쿠키가 따라간다(CSRF). 그걸 막는 게 아래 CSRF 설정이다.
  *
  * <p>그리고 프론트(Vercel)와 API 가 <b>같은 상위 도메인</b> 아래 있어야 한다.
- * 예: 화면 {@code leoneferito.com} · API {@code api.leoneferito.com}.
+ * 예: 화면 {@code leoneferito.kr} · API {@code api.leoneferito.kr}.
  * 서로 다른 사이트면 브라우저가 {@code SameSite=None} 을 요구하고, 그건 CSRF 방어를
  * 스스로 낮추는 선택이다. 도메인 연결이 이 설계의 전제다.
  */
