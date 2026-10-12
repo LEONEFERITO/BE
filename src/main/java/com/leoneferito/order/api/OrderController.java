@@ -37,10 +37,16 @@ public class OrderController {
         this.returns = returns;
     }
 
-    /** 결제를 받을 수 있는가 (토스 키 · 배송비 정책). 주문서 화면이 결제 버튼을 열지 정한다. */
+    /**
+     * 결제를 받을 수 있는가 (결제사 키 · 배송비 정책) + 어느 결제사인지 · 결제창 공개 키.
+     * 주문서 화면이 결제 버튼을 열지, 어느 결제창을 띄울지 정한다. 공개 키는 손님 브라우저에 보여도 되는 값이다 —
+     * 결제사를 바꾸거나 키를 바꿔도 화면을 다시 빌드하지 않아도 된다.
+     */
     @GetMapping("/readiness")
-    public Map<String, Boolean> readiness() {
-        return Map.of("paymentReady", orders.paymentReady());
+    public Map<String, Object> readiness() {
+        return Map.of("paymentReady", orders.paymentReady(),
+                "provider", orders.paymentProvider(),
+                "clientKey", orders.paymentClientKey());
     }
 
     /** 주문서 화면의 금액. 고른 장바구니 줄로 서버가 계산한다 (주문서 작성과 같은 계산). */
@@ -64,7 +70,7 @@ public class OrderController {
                 me.getId().toString(), me.getName(), me.getEmail()));
     }
 
-    /** 토스 successUrl 로 돌아온 화면이 부른다. 금액은 서버가 저장된 금액과 대조한다. */
+    /** 토스 successUrl 로 돌아온 화면이 부른다(결제사가 토스일 때). 금액은 서버가 저장된 금액과 대조한다. */
     @PostMapping("/{orderNumber}/confirm")
     public OrderResponse.Detail confirm(@AuthenticationPrincipal MemberPrincipal me, @PathVariable String orderNumber,
                                         @Valid @RequestBody Confirm request) {

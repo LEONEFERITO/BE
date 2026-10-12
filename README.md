@@ -108,7 +108,7 @@ nano .env      # "운영" 구간 주석을 풀고 채운다
 
 꼭 채울 것: `SPRING_PROFILES_ACTIVE=prod` · `DB_*`(비밀번호는 `openssl rand -base64 32`) · `API_DOMAIN=api.leoneferito.kr` ·
 `SITE_DOMAIN=new.leoneferito.kr` · `SITE_ADDRESSES=new.leoneferito.kr` · `FRONT_REBUILD_TOKEN`(`openssl rand -hex 24`) ·
-`ORDER_SHIPPING_FEE_KRW`(비면 주문을 안 받는다) · 결제 · 간편 로그인 · 메일 키.
+`ORDER_SHIPPING_FEE_KRW`(비면 주문을 안 받는다) · 결제(`NICEPAY_CLIENT_ID` · `NICEPAY_SECRET_KEY` · `NICEPAY_API_BASE`) · 간편 로그인 · 메일 키.
 `MEDIA_BASE_URL` · `FRONT_BASE_URL` · `CORS_ALLOWED_ORIGINS` · `FRONT_DEPLOY_HOOK_URL` 은 **적지 않는다** — compose 가 도메인으로 만든다.
 
 **5. 띄우기**
@@ -130,7 +130,14 @@ docker compose -f docker-compose.prod.yml run --rm api \
 ```
 
 **7. 간편 로그인 · 결제** — 카카오 · 네이버 개발자 콘솔에 운영 Redirect URI 를 추가한다:
-`https://api.leoneferito.kr/login/oauth2/code/kakao` · `…/naver`. 결제사 콘솔에는 사이트 주소와 서버 IP 를 등록한다.
+`https://api.leoneferito.kr/login/oauth2/code/kakao` · `…/naver`. 사이트 도메인(카카오 › 플랫폼 › Web · 네이버 서비스 URL)에는
+`https://new.leoneferito.kr` 을 넣는다. 키를 `.env` 에 넣고 `docker compose -f docker-compose.prod.yml up -d api` — 버튼은 화면을 다시 빌드하지 않아도 나온다.
+
+결제는 **나이스페이**(2026-10-12, 포스타트로 시작). 대표님이 상점을 만들고 개발자를 멤버로 초대하면
+start.nicepay.co.kr › 개발정보에서 키를 확인해 `.env` 에 넣는다. 테스트 상점 키 + `NICEPAY_API_BASE=https://sandbox-api.nicepay.co.kr`
+로 끝까지 시험한 뒤, 심사가 끝나면 운영 상점 키 + `https://api.nicepay.co.kr` 로 바꾼다. 개발정보 › 웹훅에
+`https://api.leoneferito.kr/api/payments/nicepay/webhook` 을 등록한다. 일반 계약으로 옮길 때도 이 키만 바꾼다(같은 API).
+대표님용 신청 가이드: `.github/docs/guides/LEONEFERITO_나이스페이_포스타트_신청_가이드_대표님.pdf`
 
 **8. 백업 예약**
 

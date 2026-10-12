@@ -3,12 +3,14 @@ package com.leoneferito.order;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.leoneferito.payment.NicePayClient;
+import com.leoneferito.payment.PaymentGateway;
 import com.leoneferito.payment.TossPaymentsClient;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /**
- * 값이 없으면 결제를 열지 않는다 — 토스 키도, 배송비 정책도.
+ * 값이 없으면 결제를 열지 않는다 — 결제사 키도, 배송비 정책도.
  * 지어낸 배송비가 결제되거나, 결제할 수 없는 주문서가 쌓이는 것보다 낫다.
  */
 class FailClosedTest {
@@ -18,10 +20,26 @@ class FailClosedTest {
     void noTossKey() {
         TossPaymentsClient toss = new TossPaymentsClient("", "http://127.0.0.1:9");
         assertThat(toss.isReady()).isFalse();
-        assertThatThrownBy(() -> toss.confirm("pk", "LF20261001-AAAAAAAA", 1000))
-                .isInstanceOf(TossPaymentsClient.PaymentException.class)
-                .extracting(e -> ((TossPaymentsClient.PaymentException) e).getCode())
+        assertThatThrownBy(() -> toss.approve("pk", "LF20261001-AAAAAAAA", 1000))
+                .isInstanceOf(PaymentGateway.PaymentException.class)
+                .extracting(e -> ((PaymentGateway.PaymentException) e).getCode())
                 .isEqualTo("NOT_CONFIGURED");
+    }
+
+    @Test
+    @DisplayName("나이스페이 키가 하나라도 없으면 승인·취소를 시도하지 않고, 어떤 서명도 통과시키지 않는다")
+    void noNicePayKey() {
+        for (NicePayClient nice : new NicePayClient[] {
+                new NicePayClient("", "", "http://127.0.0.1:9"),
+                new NicePayClient("client", "", "http://127.0.0.1:9"),
+                new NicePayClient("", "secret", "http://127.0.0.1:9")}) {
+            assertThat(nice.isReady()).isFalse();
+            assertThatThrownBy(() -> nice.approve("tid", "LF20261001-AAAAAAAA", 1000))
+                    .isInstanceOf(PaymentGateway.PaymentException.class)
+                    .extracting(e -> ((PaymentGateway.PaymentException) e).getCode())
+                    .isEqualTo("NOT_CONFIGURED");
+            assertThat(nice.verifyAuthSignature("token", "client", "1000", "anything")).isFalse();
+        }
     }
 
     @Test

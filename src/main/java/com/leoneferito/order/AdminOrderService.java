@@ -1,7 +1,7 @@
 package com.leoneferito.order;
 
 import com.leoneferito.common.error.ResourceNotFoundException;
-import com.leoneferito.payment.TossPaymentsClient;
+import com.leoneferito.payment.PaymentGateway;
 import java.time.Instant;
 import java.util.EnumSet;
 import java.util.Locale;
@@ -31,11 +31,11 @@ public class AdminOrderService {
     private static final String MATCH_NOTHING = "#";
 
     private final ShopOrderRepository orders;
-    private final TossPaymentsClient toss;
+    private final PaymentGateway gateway;
 
-    public AdminOrderService(ShopOrderRepository orders, TossPaymentsClient toss) {
+    public AdminOrderService(ShopOrderRepository orders, PaymentGateway gateway) {
         this.orders = orders;
-        this.toss = toss;
+        this.gateway = gateway;
     }
 
     /** 검색. status 가 없으면 결제 전 주문서를 뺀 전부. */
@@ -85,7 +85,7 @@ public class AdminOrderService {
             throw new ShopOrder.OrderStateException(
                     "발송 전 주문만 취소할 수 있습니다. 발송된 주문은 반품으로 처리해 주세요.");
         }
-        toss.cancel(order.getPaymentKey(), reason.trim(), "cancel-" + order.getOrderNumber());
+        gateway.cancel(order.getPaymentKey(), order.getOrderNumber(), reason.trim(), "cancel-" + order.getOrderNumber(), null);
         order.cancel(actorId, reason.trim(), order.getTotalAmountKrw(), Instant.now());
         log.info("주문 취소(관리자) orderNumber={} actorId={}", orderNumber, actorId);
     }

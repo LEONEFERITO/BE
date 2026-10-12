@@ -90,7 +90,6 @@ services:
       # 브라우저가 부르는 API 주소와 사이트 주소. 빌드 결과물에 박힌다(공개 값).
       NEXT_PUBLIC_API_BASE: https://${API_DOMAIN}
       NEXT_PUBLIC_SITE_URL: https://${SITE_DOMAIN}
-      NEXT_PUBLIC_TOSS_CLIENT_KEY: ${TOSS_CLIENT_KEY:-}
       # 빌드할 때 상품 · 사진을 받아 오는 주소 — 바깥 도메인을 돌지 않고 내부로 바로 간다.
       # 그래서 DNS · 인증서가 준비되기 전에도 첫 빌드가 된다.
       API_BUILD_BASE: http://api:8080

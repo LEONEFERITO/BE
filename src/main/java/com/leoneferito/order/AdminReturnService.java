@@ -2,7 +2,7 @@ package com.leoneferito.order;
 
 import com.leoneferito.common.error.ResourceNotFoundException;
 import com.leoneferito.order.ReturnService.ReturnException;
-import com.leoneferito.payment.TossPaymentsClient;
+import com.leoneferito.payment.PaymentGateway;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
@@ -30,12 +30,12 @@ public class AdminReturnService {
 
     private final ReturnRequestRepository returns;
     private final ShopOrderRepository orders;
-    private final TossPaymentsClient toss;
+    private final PaymentGateway gateway;
 
-    public AdminReturnService(ReturnRequestRepository returns, ShopOrderRepository orders, TossPaymentsClient toss) {
+    public AdminReturnService(ReturnRequestRepository returns, ShopOrderRepository orders, PaymentGateway gateway) {
         this.returns = returns;
         this.orders = orders;
-        this.toss = toss;
+        this.gateway = gateway;
     }
 
     /** 목록. open = 처리할 것만(신청 · 승인 · 회수). status 를 주면 그 상태만. 둘 다 없으면 전부. */
@@ -94,7 +94,7 @@ public class AdminReturnService {
         }
         r.requireReturnCompletable(); // 토스를 부르기 전에 상태부터 본다
         if (refundAmount > 0) {
-            toss.cancel(order.getPaymentKey(), "반품 환불", "return-" + r.getId(), refundAmount);
+            gateway.cancel(order.getPaymentKey(), order.getOrderNumber(), "반품 환불", "return-" + r.getId(), refundAmount);
         }
         r.completeReturn(actorId, refundAmount);
         log.info("반품 완료 returnId={} refund={} actorId={}", id, refundAmount, actorId);

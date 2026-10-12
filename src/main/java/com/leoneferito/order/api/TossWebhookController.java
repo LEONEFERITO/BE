@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.leoneferito.order.OrderService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -12,13 +13,14 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 토스페이먼츠 웹훅 — 결제 상태 변경 (PAYMENT_STATUS_CHANGED).
  *
- * <p>토스 개발자센터 › 웹훅에 {@code {API 주소}/api/payments/toss/webhook} 을 등록한다.
+ * <p>결제사를 토스로 쓸 때만 켜진다(app.payment.provider=toss). 토스 개발자센터 › 웹훅에 {@code {API 주소}/api/payments/toss/webhook} 을 등록한다.
  * 로그인 · CSRF 없이 열려 있다(토스 서버가 보낸다). 그래서 <b>본문을 믿지 않는다</b> —
  * 결제 키만 꺼내 토스에 다시 조회하고, 그 답으로 맞춘다 ({@link OrderService#reconcile}).
  *
  * <p>200 이 아니면 토스가 다시 보낸다. 조회가 실패하면 오류를 그대로 내서 다시 받는다.
  */
 @RestController
+@ConditionalOnProperty(name = "app.payment.provider", havingValue = "toss")
 public class TossWebhookController {
 
     private static final Logger log = LoggerFactory.getLogger(TossWebhookController.class);

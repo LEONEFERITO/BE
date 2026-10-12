@@ -127,6 +127,8 @@ class OrderApiTest {
 
     @DynamicPropertySource
     static void toss(DynamicPropertyRegistry registry) {
+        // 이 테스트는 토스 연동으로 돈의 규칙을 검증한다(기본 결제사는 나이스페이 — NicePayApiTest).
+        registry.add("app.payment.provider", () -> "toss");
         registry.add("app.payment.toss.secret-key", () -> "test_sk_fake_for_tests");
         registry.add("app.payment.toss.api-base", () -> "http://127.0.0.1:" + TOSS.getAddress().getPort());
         registry.add("app.order.shipping-fee-krw", () -> "3000");

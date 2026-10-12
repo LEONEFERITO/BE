@@ -3,8 +3,8 @@ package com.leoneferito.order;
 import com.leoneferito.common.error.ResourceNotFoundException;
 import com.leoneferito.media.MediaUrls;
 import com.leoneferito.order.CartItem.CartException;
-import com.leoneferito.payment.TossPaymentsClient;
-import com.leoneferito.payment.TossPaymentsClient.PaymentException;
+import com.leoneferito.payment.PaymentGateway;
+import com.leoneferito.payment.PaymentGateway.PaymentException;
 import com.leoneferito.product.Product;
 import com.leoneferito.product.ProductRepository;
 import com.leoneferito.product.ProductStatus;
@@ -33,18 +33,23 @@ import org.springframework.transaction.annotation.Transactional;
  * <h2>흐름</h2>
  * <ol>
  *   <li>{@link #create} — 장바구니 줄로 주문서를 만든다. 금액은 여기서 계산해 굳힌다(PENDING_PAYMENT).</li>
- *   <li>화면이 토스 결제창을 연다. 주문번호 · 금액은 1에서 받은 값이다.</li>
- *   <li>토스가 successUrl 로 돌려보내면 화면이 {@link #confirm} 을 부른다. 서버는 <b>저장된 금액과 대조한 뒤</b>
- *       토스에 승인을 요청한다. 화면이 금액을 바꿔 보내도 여기서 걸린다.</li>
+ *   <li>화면이 결제사 결제창을 연다. 주문번호 · 금액은 1에서 받은 값이다.</li>
+ *   <li>승인 — 서버는 <b>저장된 금액과 대조한 뒤</b> 결제사에 승인을 요청한다. 화면이 금액을 바꿔 보내도 여기서 걸린다.
+ *     <ul>
+ *       <li>나이스페이(기본): 결제창이 API 로 바로 돌아온다 → {@link #approveReturned} (로그인 세션 없이, 서명으로 확인).</li>
+ *       <li>토스: 화면의 successUrl 로 돌아오고 화면이 {@link #confirm} 을 부른다.</li>
+ *     </ul>
+ *   </li>
  * </ol>
+ * 결제사는 {@link PaymentGateway} 하나로 본다 — 어느 결제사인지는 설정(app.payment.provider)이 정한다.
  *
  * <h2>결제를 열지 않는 경우 (fail closed)</h2>
- * 토스 키가 없거나 배송비 정책이 없으면 주문서를 만들지 않는다. 결제할 수 없는 주문서가 쌓이거나,
+ * 결제사 키가 없거나 배송비 정책이 없으면 주문서를 만들지 않는다. 결제할 수 없는 주문서가 쌓이거나,
  * 지어낸 배송비가 결제되는 것보다 낫다.
  *
  * <h2>웹훅으로 한 번 더 맞춘다 ({@link #reconcile})</h2>
- * 토스는 승인했는데 우리 저장이 실패하는 경우(승인 직후 서버가 죽는 등)를 위해서다. 웹훅 본문은 믿지 않고
- * 결제 키로 토스에 다시 물어 맞춘다.
+ * 결제사는 승인했는데 우리 저장이 실패하는 경우(승인 직후 서버가 죽는 등)를 위해서다. 웹훅 본문은 믿지 않고
+ * 결제 키로 결제사에 다시 물어 맞춘다.
  */
 @Service
 public class OrderService {
@@ -63,21 +68,31 @@ public class OrderService {
     private final ProductRepository products;
     private final MediaUrls mediaUrls;
     private final ShippingPolicy shipping;
-    private final TossPaymentsClient toss;
+    private final PaymentGateway gateway;
 
     public OrderService(ShopOrderRepository orders, CartItemRepository carts, ProductRepository products,
-                        MediaUrls mediaUrls, ShippingPolicy shipping, TossPaymentsClient toss) {
+                        MediaUrls mediaUrls, ShippingPolicy shipping, PaymentGateway gateway) {
         this.orders = orders;
         this.carts = carts;
         this.products = products;
         this.mediaUrls = mediaUrls;
         this.shipping = shipping;
-        this.toss = toss;
+        this.gateway = gateway;
     }
 
     /** 결제를 받을 수 있는 상태인가. 화면이 결제 버튼을 열지 정할 때 쓴다. */
     public boolean paymentReady() {
-        return toss.isReady() && shipping.isReady();
+        return gateway.isReady() && shipping.isReady();
+    }
+
+    /** 결제사 이름 — "nicepay" · "toss". */
+    public String paymentProvider() {
+        return gateway.name();
+    }
+
+    /** 결제창 공개 키(나이스 clientId · 토스 클라이언트 키). */
+    public String paymentClientKey() {
+        return gateway.clientKey();
     }
 
     /**
@@ -86,7 +101,7 @@ public class OrderService {
      */
     @Transactional
     public ShopOrder create(UUID memberId, List<UUID> cartItemIds, ShopOrder.Recipient recipient) {
-        if (!toss.isReady()) {
+        if (!gateway.isReady()) {
             throw new PaymentException("NOT_CONFIGURED", "결제 준비 중입니다.");
         }
         Priced priced = price(memberId, cartItemIds);
@@ -153,14 +168,29 @@ public class OrderService {
     }
 
     /**
-     * 결제 승인. 토스 successUrl 로 돌아온 화면이 부른다.
+     * 결제 승인 (토스 — 화면의 successUrl 이 부른다). 내 주문만.
      *
      * <p>같은 결제로 두 번 불려도(새로고침) 한 번만 승인한다 — 이미 그 결제 키로 결제된 주문이면 그대로 돌려준다.
      */
     @Transactional
     public ShopOrder confirm(UUID memberId, String orderNumber, String paymentKey, long amount) {
-        ShopOrder order = mineLocked(memberId, orderNumber);
+        return approveLocked(mineLocked(memberId, orderNumber), paymentKey, amount);
+    }
 
+    /**
+     * 결제 승인 (나이스페이 — 결제창이 API 로 바로 돌려보낸다). 결제창에서 돌아오는 요청에는 로그인 쿠키가 실리지 않아
+     * 주문번호로 찾는다. 그래도 안전한 이유: 부르는 쪽이 나이스페이 서명을 먼저 확인했고, 승인 금액은 저장된 금액이며,
+     * 승인은 나이스페이가 그 결제 키(tid)로 직접 확인한다.
+     */
+    @Transactional
+    public ShopOrder approveReturned(String orderNumber, String paymentKey, long amount) {
+        ShopOrder order = orders.findByOrderNumberForUpdate(orderNumber)
+                .orElseThrow(() -> new ResourceNotFoundException("주문 없음 " + orderNumber));
+        return approveLocked(order, paymentKey, amount);
+    }
+
+    private ShopOrder approveLocked(ShopOrder order, String paymentKey, long amount) {
+        String orderNumber = order.getOrderNumber();
         if (order.getStatus() != OrderStatus.PENDING_PAYMENT) {
             if (paymentKey.equals(order.getPaymentKey())) {
                 return loaded(order); // 새로고침 — 이미 처리했다
@@ -168,27 +198,28 @@ public class OrderService {
             throw new ShopOrder.OrderStateException("이미 처리된 주문입니다.");
         }
 
-        // 토스에 보내기 전에 대조한다. 화면이 보낸 금액은 믿지 않는다.
+        // 결제사에 보내기 전에 대조한다. 화면 · 결제창이 보낸 금액은 믿지 않는다.
         if (amount != order.getTotalAmountKrw()) {
             log.warn("결제 금액 불일치 orderNumber={} expected={} got={}",
                     orderNumber, order.getTotalAmountKrw(), amount);
             throw new AmountMismatchException();
         }
 
-        TossPaymentsClient.Payment payment = toss.confirm(paymentKey, orderNumber, order.getTotalAmountKrw());
+        PaymentGateway.Payment payment = gateway.approve(paymentKey, orderNumber, order.getTotalAmountKrw());
 
         if (payment.totalAmount() == null || payment.totalAmount() != order.getTotalAmountKrw()
-                || !"DONE".equals(payment.status())) {
-            // 토스가 승인했는데 금액·상태가 다르다 — 있어선 안 되는 일. 결제 키를 남기고 사람이 본다.
+                || payment.status() != PaymentGateway.Status.PAID) {
+            // 결제사가 승인했는데 금액·상태가 다르다 — 있어선 안 되는 일. 결제 키를 남기고 사람이 본다.
             log.error("결제 승인 결과 불일치 orderNumber={} paymentKey={} status={} amount={}",
                     orderNumber, paymentKey, payment.status(), payment.totalAmount());
             throw new PaymentException("MISMATCH", "결제 확인 중 문제가 생겼습니다. 고객센터로 문의해 주세요.");
         }
 
         order.markPaid(paymentKey, payment.method(),
-                payment.approvedAt() == null ? Instant.now() : payment.approvedAt().toInstant());
+                payment.approvedAt() == null ? Instant.now() : payment.approvedAt());
 
         // 결제한 줄은 장바구니에서 뺀다. 결제 실패면 그대로 남아 다시 시도할 수 있다.
+        UUID memberId = order.getMemberId();
         List<UUID> paidLines = carts.findByMemberIdOrderByCreatedAtAsc(memberId).stream()
                 .filter(c -> order.getItems().stream().anyMatch(
                         i -> i.getProductId().equals(c.getProductId()) && i.getSize().equals(c.getSize())))
@@ -198,22 +229,22 @@ public class OrderService {
             carts.deleteByMemberIdAndIdIn(memberId, paidLines);
         }
 
-        log.info("결제 완료 orderNumber={} method={}", orderNumber, payment.method());
+        log.info("결제 완료 orderNumber={} gateway={} method={}", orderNumber, gateway.name(), payment.method());
         return loaded(order);
     }
 
     /**
-     * 토스 웹훅 (결제 상태 변경). 본문은 믿지 않는다 — 결제 키로 토스에 직접 조회한 값만 쓴다.
+     * 결제사 웹훅 (결제 상태 변경). 본문은 믿지 않는다 — 결제 키로 결제사에 직접 조회한 값만 쓴다.
      *
      * <ul>
-     *   <li>토스는 DONE 인데 우리는 결제 전 → 결제 완료로 맞춘다 (금액이 같을 때만).</li>
-     *   <li>그 밖에 어긋나면(토스 상점관리자에서 직접 취소 등) 고치지 않고 로그를 남긴다 — 사람이 본다.
+     *   <li>결제사는 결제 완료인데 우리는 결제 전 → 결제 완료로 맞춘다 (금액이 같을 때만).</li>
+     *   <li>그 밖에 어긋나면(결제사 가맹점관리자에서 직접 취소 등) 고치지 않고 로그를 남긴다 — 사람이 본다.
      *       돈의 상태를 웹훅 하나로 자동으로 되돌리면, 잘못된 판단 하나가 환불 사고가 된다.</li>
      * </ul>
      */
     @Transactional
     public void reconcile(String paymentKey) {
-        TossPaymentsClient.Payment p = toss.fetch(paymentKey);
+        PaymentGateway.Payment p = gateway.fetch(paymentKey);
         if (p.orderId() == null) {
             return;
         }
@@ -222,27 +253,25 @@ public class OrderService {
             log.warn("웹훅: 우리 주문이 아님 orderId={}", p.orderId());
             return;
         }
-        if ("DONE".equals(p.status()) && order.getStatus() == OrderStatus.PENDING_PAYMENT) {
+        if (p.status() == PaymentGateway.Status.PAID && order.getStatus() == OrderStatus.PENDING_PAYMENT) {
             if (p.totalAmount() == null || p.totalAmount() != order.getTotalAmountKrw()) {
                 log.error("웹훅: 결제 금액 불일치 orderNumber={} paymentKey={} amount={}",
                         order.getOrderNumber(), paymentKey, p.totalAmount());
                 return;
             }
-            order.markPaid(paymentKey, p.method(),
-                    p.approvedAt() == null ? Instant.now() : p.approvedAt().toInstant());
+            order.markPaid(paymentKey, p.method(), p.approvedAt() == null ? Instant.now() : p.approvedAt());
             log.warn("웹훅으로 결제 반영 orderNumber={} — 승인 응답을 놓친 주문", order.getOrderNumber());
             return;
         }
-        boolean tossCancelled = "CANCELED".equals(p.status()) || "PARTIAL_CANCELED".equals(p.status());
-        long tossRefunded = p.totalAmount() == null || p.balanceAmount() == null ? 0
-                : p.totalAmount() - p.balanceAmount();
-        if (tossCancelled && tossRefunded != order.getRefundedAmountKrw()) {
-            log.error("웹훅: 환불액 불일치 — 사람이 확인 orderNumber={} toss={} ours={}",
-                    order.getOrderNumber(), tossRefunded, order.getRefundedAmountKrw());
+        boolean cancelled = p.status() == PaymentGateway.Status.CANCELLED
+                || p.status() == PaymentGateway.Status.PARTIAL_CANCELLED;
+        if (cancelled && p.refundedAmount() != order.getRefundedAmountKrw()) {
+            log.error("웹훅: 환불액 불일치 — 사람이 확인 orderNumber={} gateway={} ours={}",
+                    order.getOrderNumber(), p.refundedAmount(), order.getRefundedAmountKrw());
         }
     }
 
-    /** 손님 취소. 결제 직후 · 제작 시작 전에만. 토스 환불이 먼저 성공해야 상태를 바꾼다. */
+    /** 손님 취소. 결제 직후 · 제작 시작 전에만. 결제사 환불이 먼저 성공해야 상태를 바꾼다. */
     @Transactional
     public ShopOrder cancelByCustomer(UUID memberId, String orderNumber) {
         ShopOrder order = mineLocked(memberId, orderNumber);
@@ -251,7 +280,7 @@ public class OrderService {
                     "제작이 시작된 주문은 직접 취소할 수 없습니다. 고객센터로 문의해 주세요.");
         }
         String reason = "고객 요청 취소";
-        toss.cancel(order.getPaymentKey(), reason, "cancel-" + order.getOrderNumber());
+        gateway.cancel(order.getPaymentKey(), order.getOrderNumber(), reason, "cancel-" + order.getOrderNumber(), null);
         order.cancel(null, reason, order.getTotalAmountKrw(), Instant.now());
         log.info("주문 취소(고객) orderNumber={}", orderNumber);
         return loaded(order);

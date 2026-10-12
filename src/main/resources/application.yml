@@ -112,9 +112,22 @@ app:
     change-of-mind-days: ${RETURNS_CHANGE_OF_MIND_DAYS:7}
     seller-fault-months: ${RETURNS_SELLER_FAULT_MONTHS:3}
   payment:
+    # 결제사 — nicepay(기본, 2026-10-12 포스타트로 시작) · toss. 바꾸면 API 를 다시 띄운다. 주문 코드는 그대로다.
+    provider: ${PAYMENT_PROVIDER:nicepay}
+    nicepay:
+      # 나이스페이 상점 키 — 가맹점관리자 › 개발정보. 둘 다 있어야 결제를 연다(fail closed).
+      # 포스타트 → 일반 계약으로 바꾸면 새 상점의 키로 바꾸기만 하면 된다(같은 API).
+      client-id: ${NICEPAY_CLIENT_ID:}
+      # 비밀값 — 로그에 찍지 않는다.
+      secret-key: ${NICEPAY_SECRET_KEY:}
+      # 샌드박스(테스트 상점) https://sandbox-api.nicepay.co.kr · 운영 https://api.nicepay.co.kr
+      # 기본은 샌드박스 — 운영 키로 바꾸면서 이 값을 빠뜨리면 결제가 실패할 뿐 돈이 잘못 움직이지 않는다.
+      api-base: ${NICEPAY_API_BASE:https://sandbox-api.nicepay.co.kr}
     toss:
       # 토스페이먼츠 시크릿 키 (test_sk_… / live_sk_…). 비어 있으면 결제를 열지 않는다. 비밀값 — 로그에 찍지 않는다.
       secret-key: ${TOSS_SECRET_KEY:}
+      # 결제창 공개 키(test_ck_ / live_ck_). 주문서 화면이 /api/orders/readiness 로 받는다.
+      client-key: ${TOSS_CLIENT_KEY:}
       api-base: https://api.tosspayments.com
   mail:
     # 보내는 사람. SMTP 서버가 이 주소로 보낼 권한이 있어야 한다(SPF/DKIM). TODO(고객확인) 발신 주소

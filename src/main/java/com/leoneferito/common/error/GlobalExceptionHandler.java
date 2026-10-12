@@ -268,10 +268,10 @@ public class GlobalExceptionHandler {
 
 	/**
 	 * 결제사 거절 · 연결 실패. 키가 없으면 503(결제 준비 중), 나머지는 409.
-	 * 토스 메시지는 손님용 문장이라 그대로 보여준다("한도 초과입니다" 등) — 무엇을 해야 하는지 알 수 있다.
+	 * 결제사 메시지는 손님용 문장이라 그대로 보여준다("한도 초과입니다" 등) — 무엇을 해야 하는지 알 수 있다.
 	 */
-	@ExceptionHandler(com.leoneferito.payment.TossPaymentsClient.PaymentException.class)
-	public ResponseEntity<ErrorResponse> handlePayment(com.leoneferito.payment.TossPaymentsClient.PaymentException e) {
+	@ExceptionHandler(com.leoneferito.payment.PaymentGateway.PaymentException.class)
+	public ResponseEntity<ErrorResponse> handlePayment(com.leoneferito.payment.PaymentGateway.PaymentException e) {
 		String traceId = currentTraceId();
 		if ("NOT_CONFIGURED".equals(e.getCode())) {
 			return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
@@ -282,7 +282,7 @@ public class GlobalExceptionHandler {
 				.body(ErrorResponse.of("PAYMENT_FAILED", e.getMessage(), traceId));
 	}
 
-	/** 화면이 보낸 결제 금액이 주문 금액과 다르다. 토스에 보내기 전에 거절했다. 400. */
+	/** 화면이 보낸 결제 금액이 주문 금액과 다르다. 결제사에 보내기 전에 거절했다. 400. */
 	@ExceptionHandler(com.leoneferito.order.OrderService.AmountMismatchException.class)
 	public ResponseEntity<ErrorResponse> handleAmountMismatch(com.leoneferito.order.OrderService.AmountMismatchException e) {
 		return ResponseEntity.badRequest().body(ErrorResponse.of("AMOUNT_MISMATCH",
