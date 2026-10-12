@@ -14,6 +14,7 @@ import com.jayway.jsonpath.JsonPath;
 import com.leoneferito.TestMailConfiguration;
 import com.leoneferito.TestcontainersConfiguration;
 import com.leoneferito.auth.AuthService;
+import com.leoneferito.auth.PasswordResetService;
 import com.leoneferito.member.AdminMemberService;
 import com.leoneferito.member.MemberRole;
 import com.leoneferito.member.MemberTestSupport;
@@ -54,6 +55,9 @@ class AdminConsoleApiTest {
 
     @Autowired
     private AdminMemberService adminMembers;
+
+    @Autowired
+    private PasswordResetService passwordReset;
 
     private Cookie admin;
 
@@ -113,6 +117,30 @@ class AdminConsoleApiTest {
             // 같은 세션으로 바로 열린다
             mockMvc.perform(get("/api/admin/orders").cookie(master)).andExpect(status().isOk());
             mockMvc.perform(get("/api/auth/me").cookie(master)).andExpect(jsonPath("$.mustChangePassword").value(false));
+        }
+
+        @Test
+        @DisplayName("운영 방식 — 아이디만 주면 아무도 모르는 비밀번호로 만들고, 설정 링크로 정한 뒤 아이디로 들어온다")
+        void loginIdWithSetupLink() throws Exception {
+            var result = adminMembers.createWithLoginId("leoneferito", null, "운영자", MemberRole.SUPER_ADMIN, null);
+            assertThat(result.created()).isTrue();
+
+            String link = passwordReset.issueLink(result.member());
+            String token = link.substring(link.indexOf("#token=") + "#token=".length());
+            send(null, post("/api/auth/password-reset/confirm"),
+                    "{\"token\":\"%s\",\"newPassword\":\"%s\"}".formatted(token, PASSWORD))
+                    .andExpect(status().isNoContent());
+
+            Cookie owner = adminLogin("leoneferito", PASSWORD)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.mustChangePassword").value(false))
+                    .andReturn().getResponse().getCookie("LFSESSION");
+            mockMvc.perform(get("/api/admin/orders").cookie(owner)).andExpect(status().isOk());
+
+            // 다시 돌려도(비밀번호를 잊었을 때) 비밀번호는 그대로 — 새 링크를 쓰기 전까지
+            assertThat(adminMembers.createWithLoginId("leoneferito", null, "운영자", MemberRole.SUPER_ADMIN, null)
+                    .created()).isFalse();
+            adminLogin("leoneferito", PASSWORD).andExpect(status().isOk());
         }
 
         @Test

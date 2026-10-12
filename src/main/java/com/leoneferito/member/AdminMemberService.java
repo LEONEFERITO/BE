@@ -185,8 +185,13 @@ public class AdminMemberService {
     }
 
     /**
-     * 아이디 로그인 관리자 + 임시 비밀번호 (로컬 개발용 — CreateAdminCommand 가 local 프로필에서만 부른다).
-     * 비밀번호 규칙을 건너뛰는 대신 첫 로그인 뒤 바꾸기 전까지 관리자 API 가 막힌다(must_change_password).
+     * 아이디 로그인 관리자 (서버 명령).
+     * <ul>
+     *   <li>임시 비밀번호를 주면(로컬 전용 — CreateAdminCommand 가 local 프로필에서만 넘긴다) 그 값으로 들어오고,
+     *       첫 로그인 뒤 바꾸기 전까지 관리자 API 가 막힌다(must_change_password).</li>
+     *   <li>null 이면(운영) 새 계정은 아무도 모르는 무작위 비밀번호로 만들고, 기존 계정은 비밀번호를 건드리지 않는다.
+     *       명령이 비밀번호 설정 링크를 찍고 본인이 정한다 — 이메일 방식과 같은 길.</li>
+     * </ul>
      * 이메일이 없으면 {아이디}@local.invalid — .invalid 는 메일이 절대 가지 않는 예약 도메인이다.
      */
     @Transactional
@@ -204,18 +209,21 @@ public class AdminMemberService {
         boolean created = member == null;
         if (created) {
             // id 를 미리 정한 엔티티라 save 가 merge 로 동작한다 — 돌려받은 관리 대상에 이어서 바꿔야 저장된다
-            member = members.save(new Member(UUID.randomUUID(), email, passwordEncoder.encode(temporaryPassword),
-                    name, null));
+            String initial = temporaryPassword != null ? temporaryPassword : UUID.randomUUID().toString();
+            member = members.save(new Member(UUID.randomUUID(), email, passwordEncoder.encode(initial), name, null));
         } else if (!member.isActive()) {
             throw new MemberRuleException("정지되었거나 탈퇴한 계정입니다.");
         }
         MemberRole before = member.getRole();
         member.assignLoginId(loginId);
         member.changeRole(role);
-        member.setTemporaryPassword(passwordEncoder.encode(temporaryPassword));
+        if (temporaryPassword != null) {
+            member.setTemporaryPassword(passwordEncoder.encode(temporaryPassword));
+        }
         sessionTerminator.terminateAll(member.getEmail());
         record(member, null, created ? Action.CREATED_BY_COMMAND : Action.ROLE_CHANGED,
-                (created ? "" : before + " → ") + role + " · 아이디 " + loginId + " · 임시 비밀번호 (서버 명령)");
+                (created ? "" : before + " → ") + role + " · 아이디 " + loginId
+                        + (temporaryPassword != null ? " · 임시 비밀번호" : " · 설정 링크") + " (서버 명령)");
         return new CommandResult(member, created);
     }
 
