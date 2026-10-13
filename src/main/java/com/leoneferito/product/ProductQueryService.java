@@ -24,10 +24,28 @@ public class ProductQueryService {
 
     private final ProductRepository products;
     private final MediaUrls mediaUrls;
+    private final CategoryOrderRepository categoryOrders;
 
-    public ProductQueryService(ProductRepository products, MediaUrls mediaUrls) {
+    public ProductQueryService(ProductRepository products, MediaUrls mediaUrls,
+                               CategoryOrderRepository categoryOrders) {
         this.products = products;
         this.mediaUrls = mediaUrls;
+        this.categoryOrders = categoryOrders;
+    }
+
+    /**
+     * 분류 메뉴 순서 (V27) — 헤더 · 모바일 메뉴가 이 순서로 놓는다. 관리자가 바꾼다.
+     * 행이 없는 분류(나중에 enum 에만 더한 것)는 맨 뒤에 선언 순서로 붙인다 — 메뉴에서 사라지지 않게.
+     */
+    public List<ProductCategory> categoryOrder() {
+        List<ProductCategory> ordered = new java.util.ArrayList<>(categoryOrders.findAllByOrderBySortOrderAsc()
+                .stream().map(CategoryOrder::getCategory).toList());
+        for (ProductCategory c : ProductCategory.values()) {
+            if (!ordered.contains(c)) {
+                ordered.add(c);
+            }
+        }
+        return ordered;
     }
 
     /**

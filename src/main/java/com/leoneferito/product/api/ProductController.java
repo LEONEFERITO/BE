@@ -38,6 +38,19 @@ public class ProductController {
     }
 
     /**
+     * 분류 메뉴 순서 (V27). 손님 화면이 빌드할 때 받아 헤더 메뉴를 이 순서로 놓는다.
+     * 경로가 상품 상세({@code /{slug}})보다 구체적이라 먼저 걸린다.
+     */
+    @GetMapping("/category-order")
+    public CategoryOrderView categoryOrder() {
+        return new CategoryOrderView(query.categoryOrder());
+    }
+
+    /** 분류를 앞에서부터. */
+    public record CategoryOrderView(List<ProductCategory> categories) {
+    }
+
+    /**
      * 상세.
      *
      * <p>비공개(DRAFT) 상품도 404 다. 403 으로 나누면 "그 slug 는 존재한다" 가 새어

@@ -28,12 +28,14 @@ public class AdminProductService {
 
     private final ProductRepository products;
     private final MediaAssetRepository mediaAssets;
+    private final CategoryOrderRepository categoryOrders;
     private final ApplicationEventPublisher events;
 
     public AdminProductService(ProductRepository products, MediaAssetRepository mediaAssets,
-                               ApplicationEventPublisher events) {
+                               CategoryOrderRepository categoryOrders, ApplicationEventPublisher events) {
         this.products = products;
         this.mediaAssets = mediaAssets;
+        this.categoryOrders = categoryOrders;
         this.events = events;
     }
 
@@ -119,6 +121,30 @@ public class AdminProductService {
         }
         log.info("진열 순서 변경 count={}", ids.size());
         events.publishEvent(new FrontRebuildTrigger.CatalogChanged("진열 순서"));
+    }
+
+    /**
+     * 분류 메뉴 순서 (V27). 화면이 보낸 목록은 분류 전부를 한 번씩 담아야 한다 — 빠지거나 겹치면 409(다시 불러오기).
+     * 저장하면 손님 화면을 다시 만든다(헤더 메뉴가 빌드 때 순서를 받는다).
+     */
+    @Transactional
+    public void reorderCategories(List<ProductCategory> order) {
+        java.util.Set<ProductCategory> all = java.util.EnumSet.allOf(ProductCategory.class);
+        if (order.size() != all.size() || !new java.util.HashSet<>(order).equals(all)) {
+            throw new com.leoneferito.common.error.StaleListException();
+        }
+        java.util.Map<ProductCategory, CategoryOrder> rows = categoryOrders.findAll().stream()
+                .collect(java.util.stream.Collectors.toMap(CategoryOrder::getCategory, r -> r));
+        for (int i = 0; i < order.size(); i++) {
+            CategoryOrder row = rows.get(order.get(i));
+            if (row == null) {
+                // 마이그레이션이 행을 심지 않은 분류 — 순서를 저장할 곳이 없다. 마이그레이션부터.
+                throw new IllegalStateException("분류 순서 행 없음: " + order.get(i) + " (V27 이후 마이그레이션 확인)");
+            }
+            row.moveTo((i + 1) * 10);
+        }
+        log.info("분류 순서 변경 {}", order);
+        events.publishEvent(new FrontRebuildTrigger.CatalogChanged("분류 순서"));
     }
 
     private void apply(Product product, AdminProductRequests.Save request) {

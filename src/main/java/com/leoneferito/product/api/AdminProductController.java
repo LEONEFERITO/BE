@@ -2,6 +2,7 @@ package com.leoneferito.product.api;
 
 import com.leoneferito.product.AdminProductQueryService;
 import com.leoneferito.product.AdminProductService;
+import com.leoneferito.product.ProductCategory;
 import jakarta.validation.Valid;
 import java.net.URI;
 import java.util.List;
@@ -36,8 +37,11 @@ public class AdminProductController {
 
     private final AdminProductService service;
     private final AdminProductQueryService queries;
+    private final com.leoneferito.product.ProductQueryService categories;
 
-    public AdminProductController(AdminProductService service, AdminProductQueryService queries) {
+    public AdminProductController(AdminProductService service, AdminProductQueryService queries,
+                                  com.leoneferito.product.ProductQueryService categories) {
+        this.categories = categories;
         this.service = service;
         this.queries = queries;
     }
@@ -87,6 +91,25 @@ public class AdminProductController {
 
     public record Reorder(@jakarta.validation.constraints.NotNull
                           @jakarta.validation.constraints.Size(max = 500) java.util.List<UUID> ids) {
+    }
+
+    /** 분류 메뉴 순서 (V27) — 지금 순서. 손님용 {@code GET /api/products/category-order} 와 같은 값. */
+    @GetMapping("/category-order")
+    public ProductController.CategoryOrderView categoryOrder() {
+        return new ProductController.CategoryOrderView(categories.categoryOrder());
+    }
+
+    /** 분류 메뉴 순서 바꾸기 — 분류 전부를 앞에서부터. 빠지거나 겹치면 409. 저장하면 손님 화면을 다시 만든다. */
+    @PutMapping("/category-order")
+    public ResponseEntity<Void> reorderCategories(@jakarta.validation.Valid @RequestBody CategoryReorder request) {
+        service.reorderCategories(request.categories());
+        return ResponseEntity.noContent().build();
+    }
+
+    public record CategoryReorder(@jakarta.validation.constraints.NotNull
+                                  @jakarta.validation.constraints.Size(max = 20)
+                                  java.util.List<@jakarta.validation.constraints.NotNull
+                                          ProductCategory> categories) {
     }
 
     @PostMapping("/{id}/publish")
