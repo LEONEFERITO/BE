@@ -150,10 +150,15 @@ crontab -e
 
 ### 오픈하는 날
 
-1. 카페24 DNS: `@`(루트) · `www` A 레코드 값을 Lightsail 고정 IP 로 바꾼다.
-2. `.env`: `SITE_DOMAIN=leoneferito.kr` · `SITE_ADDRESSES=leoneferito.kr, www.leoneferito.kr` · `SITE_ROBOTS=all`
-3. FE `public/robots.txt` 를 허용으로 바꿔 푸시한다 (오픈 전에는 전부 막혀 있다).
-4. 적용: `bash deploy/update.sh` — 컨테이너가 새 도메인으로 다시 뜨고 손님 화면이 다시 빌드된다.
+1. 카페24 DNS: 루트(`leoneferito.kr`) A 레코드는 **고정 IP 하나만** 남긴다 — 카페24 IP 4개 중 하나를 수정, 나머지 셋은 삭제.
+   카페24 IP 가 하나라도 남으면 일부 손님이 옛 몰로 가고 인증서 발급도 실패한다. `www` 는 카페24 쇼핑몰 도메인 연결(CDN)로
+   잡혀 있어 쇼핑몰 관리자에서 연결을 먼저 해제한 뒤 A 레코드 `www` → 고정 IP 를 추가한다.
+   `nslookup leoneferito.kr 8.8.8.8` 이 고정 IP 하나만 돌려줄 때까지 기다린다(30분~1시간, 길면 반나절).
+2. `.env`: `SITE_DOMAIN=leoneferito.kr` · `SITE_ADDRESSES=leoneferito.kr, www.leoneferito.kr, new.leoneferito.kr`
+   (www · new 는 루트로 넘어간다). 검색 노출은 상품이 다 올라간 뒤에 `SITE_ROBOTS=all` — 그 전에는 `noindex, nofollow` 그대로.
+3. DNS 가 넘어온 **뒤에** 적용: `bash deploy/update.sh` — 컨테이너가 새 도메인으로 다시 뜨고 손님 화면이 다시 빌드된다.
+   DNS 보다 먼저 하면 Caddy 가 인증서를 못 받고 몇 번 실패하면 한동안 막힌다.
+4. 검색을 열 때 FE `public/robots.txt` 를 허용으로 바꿔 푸시한다 (오픈 전에는 전부 막혀 있다).
 5. 카카오 · 네이버 Redirect URI 는 API 주소라 바꿀 것이 없다. 결제사에 등록한 사이트 주소는 정식 주소로 바꾼다.
 6. 며칠 지켜본 뒤 `deploy/Caddyfile` 의 `Strict-Transport-Security` 주석을 푼다.
 7. 기존 카페24 쇼핑몰은 새 사이트가 뜬 것을 확인한 뒤 해지한다. **도메인은 해지하지 않는다.**

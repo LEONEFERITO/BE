@@ -1,7 +1,8 @@
 # 서버 앞의 문 하나 — 손님 화면(정적 파일)과 API 를 같은 Caddy 가 받는다 (2026-10-12, Lightsail 한 대 배포).
 #
 # 도메인은 .env 에서 온다:
-#   SITE_ADDRESSES  손님 화면 주소들. 오픈 전 "new.leoneferito.kr", 오픈 날 "leoneferito.kr, www.leoneferito.kr"
+#   SITE_ADDRESSES  손님 화면 주소들. 오픈 전 "new.leoneferito.kr", 오픈 날 "leoneferito.kr, www.leoneferito.kr, new.leoneferito.kr"
+#                   (www · new 는 대표 주소로 넘긴다 — 인증서를 받아야 넘길 수 있어서 목록에 둔다)
 #   SITE_DOMAIN     대표 주소(www 를 이리로 보낸다). 오픈 전 new.leoneferito.kr, 오픈 날 leoneferito.kr
 #   API_DOMAIN      api.leoneferito.kr
 #   SITE_ROBOTS     검색 노출. 오픈 전 "noindex, nofollow", 오픈 날 "all"
@@ -19,6 +20,12 @@
 	# www 로 들어오면 대표 주소로 (오픈 전에는 www 주소가 없어 이 줄이 일하지 않는다)
 	@www host www.{$SITE_DOMAIN}
 	redir @www https://{$SITE_DOMAIN}{uri} permanent
+
+	# 오픈 뒤 옛 미리보기 주소(new.)로 들어오면 정식 주소로 — 즐겨찾기 · 공유 링크가 끊기지 않게.
+	# API 는 정식 주소에서 오는 요청만 받는다(CORS). new. 에 화면을 그대로 두면 로그인 · 주문이 막힌다.
+	# 오픈 전(SITE_DOMAIN=new.leoneferito.kr)에는 new.new. 주소가 없어 이 줄이 일하지 않는다.
+	@preview host new.{$SITE_DOMAIN}
+	redir @preview https://{$SITE_DOMAIN}{uri} permanent
 
 	# 빌더가 릴리스를 만들 때마다 current 링크만 바꾼다. 반쯤 바뀐 사이트는 보이지 않는다.
 	root * /srv/site/current
