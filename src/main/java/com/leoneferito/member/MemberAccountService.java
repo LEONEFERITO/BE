@@ -9,6 +9,7 @@ import com.leoneferito.order.ReturnRequestRepository;
 import com.leoneferito.order.ReturnStatus;
 import com.leoneferito.order.ShopOrderRepository;
 import java.util.EnumSet;
+import java.util.List;
 import java.time.Instant;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -49,6 +50,18 @@ public class MemberAccountService {
         this.orders = orders;
         this.returns = returns;
         this.socialLinks = socialLinks;
+    }
+
+    /**
+     * 이 회원에 연결한 간편 로그인(V28) — 가입한 방법(member.provider)과 따로. 이메일로 가입한 뒤 같은 이메일의
+     * 네이버로 들어와 연결된 회원은 가입 방법이 "이메일" 이라, 이게 없으면 네이버가 연결된 걸 화면이 알 수 없다
+     * (2026-10-13 네이버 로그인 검수 — 마이페이지에 「연결된 간편 로그인」).
+     */
+    @Transactional(readOnly = true)
+    public List<MemberProvider> linkedProviders(UUID memberId) {
+        return socialLinks.findByMemberIdOrderByLinkedAtAsc(memberId).stream()
+                .map(MemberSocialLink::getProvider)
+                .toList();
     }
 
     @Transactional(readOnly = true)

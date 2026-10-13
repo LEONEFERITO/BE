@@ -12,6 +12,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;
+import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -43,7 +44,7 @@ public class MeController {
 
     @GetMapping("/profile")
     public Profile profile(@AuthenticationPrincipal MemberPrincipal principal) {
-        return Profile.from(accounts.get(principal.getId()));
+        return Profile.from(accounts.get(principal.getId()), accounts.linkedProviders(principal.getId()));
     }
 
     /** 이름 · 전화번호 수정. 세션에 든 이름도 새로 담는다 — 헤더의 "○○님" 이 바로 바뀌게. */
@@ -60,7 +61,7 @@ public class MeController {
         SecurityContextHolder.setContext(context);
         contextRepository.saveContext(context, httpRequest, httpResponse);
 
-        return Profile.from(member);
+        return Profile.from(member, accounts.linkedProviders(member.getId()));
     }
 
     @PostMapping("/password")
@@ -88,10 +89,11 @@ public class MeController {
     }
 
     /** 마이페이지가 그리는 값만. 잠금·실패 횟수 같은 내부 상태는 주지 않는다. */
+    /** {@code linkedProviders} — 가입한 방법과 따로, 나중에 연결한 간편 로그인(V28). 없으면 빈 목록. */
     public record Profile(String email, String name, String phone, MemberProvider provider,
-                          boolean hasPassword, Instant createdAt) {
-        static Profile from(Member m) {
-            return new Profile(m.getEmail(), m.getName(), m.getPhone(), m.getProvider(),
+                          List<MemberProvider> linkedProviders, boolean hasPassword, Instant createdAt) {
+        static Profile from(Member m, List<MemberProvider> linked) {
+            return new Profile(m.getEmail(), m.getName(), m.getPhone(), m.getProvider(), linked,
                     m.hasPassword(), m.getCreatedAt());
         }
     }

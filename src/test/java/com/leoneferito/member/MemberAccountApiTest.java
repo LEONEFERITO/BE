@@ -63,6 +63,9 @@ class MemberAccountApiTest {
     @Autowired
     private MemberAccountService accountService;
 
+    @Autowired
+    private MemberSocialLinkRepository socialLinks;
+
     @BeforeEach
     void reset() {
         MemberTestSupport.cleanDatabase(jdbc);
@@ -88,6 +91,21 @@ class MemberAccountApiTest {
 
             mockMvc.perform(get("/api/auth/me").cookie(session))
                     .andExpect(jsonPath("$.name").value("김페리"));
+        }
+
+        @Test
+        @DisplayName("연결한 간편 로그인이 보인다 — 가입 방법(이메일)은 그대로")
+        void showsLinkedProviders() throws Exception {
+            Cookie session = login(mockMvc, EMAIL, PASSWORD);
+            mockMvc.perform(get("/api/me/profile").cookie(session))
+                    .andExpect(jsonPath("$.provider").value("LOCAL"))
+                    .andExpect(jsonPath("$.linkedProviders").isEmpty());
+
+            UUID id = jdbc.queryForObject("SELECT id FROM member WHERE email = ?", UUID.class, EMAIL);
+            socialLinks.save(new MemberSocialLink(id, MemberProvider.NAVER, "naver-user-1", java.time.Instant.now()));
+            mockMvc.perform(get("/api/me/profile").cookie(session))
+                    .andExpect(jsonPath("$.provider").value("LOCAL"))
+                    .andExpect(jsonPath("$.linkedProviders[0]").value("NAVER"));
         }
 
         @Test
