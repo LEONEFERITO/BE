@@ -27,10 +27,14 @@ public enum SocialProvider {
             Object id = attributes.get("id");
             Map<String, Object> account = map(attributes.get("kakao_account"));
             Map<String, Object> profile = map(account.get("profile"));
+            // 카카오가 "유효하고 인증된 이메일" 이라고 알려 줄 때만 확인된 이메일로 본다 (V28 기존 회원 연결)
+            boolean verified = Boolean.TRUE.equals(account.get("is_email_valid"))
+                    && Boolean.TRUE.equals(account.get("is_email_verified"));
             return new Profile(
                     id == null ? null : String.valueOf(id),
                     text(account.get("email")),
-                    text(profile.get("nickname")));
+                    text(profile.get("nickname")),
+                    verified);
         }
     },
 
@@ -50,14 +54,23 @@ public enum SocialProvider {
         public Profile profileOf(Map<String, Object> attributes) {
              Map<String, Object> response = map(attributes.get("response"));
             String name = text(response.get("name"));
+            String email = text(response.get("email"));
+            // 네이버는 확인 여부를 주지 않는다. 그 네이버 계정 자체의 주소(@naver.com)만 확인된 것으로 본다 —
+            // 연락처 이메일을 다른 주소로 바꿔 둔 경우는 그 주소의 주인인지 알 수 없다.
+            boolean verified = email != null && email.toLowerCase(Locale.ROOT).endsWith("@naver.com");
             return new Profile(
                     text(response.get("id")),
-                    text(response.get("email")),
-                    name != null ? name : text(response.get("nickname")));
+                    email,
+                    name != null ? name : text(response.get("nickname")),
+                    verified);
         }
     };
 
-    public record Profile(String userId, String email, String name) { }
+    /**
+     * 제공자가 준 사용자 정보. {@code emailVerified} — 제공자가 이 이메일의 주인을 확인했는가.
+     * true 일 때만 같은 이메일의 기존 회원에 연결한다(SocialLoginService, V28).
+     */
+    public record Profile(String userId, String email, String name, boolean emailVerified) { }
     public final MemberProvider memberProvider;
     public final String registrationId;
 

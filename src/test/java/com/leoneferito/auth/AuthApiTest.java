@@ -79,6 +79,15 @@ class AuthApiTest {
     @Autowired
     private org.springframework.jdbc.core.JdbcTemplate jdbc;
 
+    @Autowired
+    private com.leoneferito.member.MemberSocialLinkRepository socialLinks;
+
+    @Autowired
+    private com.leoneferito.member.AdminMemberService adminMembers;
+
+    @Autowired
+    private com.leoneferito.member.MemberAccountService accounts;
+
     @BeforeEach
     void reset() {
         // 회원을 참조하는 기록(V10)부터 지운다. 다른 테스트 클래스가 남긴 행이 있을 수 있다.
@@ -117,8 +126,30 @@ class AuthApiTest {
 
         /** 제공자 호출을 흉내 낸다. 진짜 카카오는 키가 있어야 해서 여기서는 응답 모양만 재현한다. */
         private SocialLoginService serviceReturning(Map<String, Object> attributes) {
-            return new SocialLoginService(members, request -> new DefaultOAuth2User(
-                    List.of(new SimpleGrantedAuthority("OAUTH2_USER")), attributes, "id"));
+            return new SocialLoginService(members, socialLinks, request -> new DefaultOAuth2User(
+                    List.of(new SimpleGrantedAuthority("OAUTH2_USER")), attributes,
+                    attributes.containsKey("id") ? "id" : "response"));
+        }
+
+        private OAuth2UserRequest naverRequest() {
+            return new OAuth2UserRequest(
+                    SocialProvider.NAVER.registration("client-id-for-test", "not-a-secret"),
+                    new OAuth2AccessToken(OAuth2AccessToken.TokenType.BEARER, "token",
+                            Instant.now(), Instant.now().plusSeconds(60)));
+        }
+
+        /** 카카오가 "유효하고 인증된 이메일" 이라고 알려 주는 응답 */
+        private Map<String, Object> kakaoVerified(String email) {
+            Map<String, Object> account = new HashMap<>();
+            account.put("email", email);
+            account.put("is_email_valid", true);
+            account.put("is_email_verified", true);
+            account.put("profile", Map.of("nickname", "김레오"));
+            return Map.of("id", 123456789L, "kakao_account", account);
+        }
+
+        private Map<String, Object> naverAttributes(String email) {
+            return Map.of("resultcode", "00", "response", Map.of("id", "naver-user-1", "email", email, "nickname", "레오"));
         }
 
         private OAuth2UserRequest kakaoRequest() {
@@ -179,7 +210,7 @@ class AuthApiTest {
         }
 
         @Test
-        @DisplayName("이메일로 이미 가입된 주소면 이어 붙이지 않는다")
+        @DisplayName("이메일로 이미 가입된 주소인데 제공자가 확인한 이메일이 아니면 이어 붙이지 않는다")
         void doesNotLinkByEmail() {
             /*
              * 제공자가 준 이메일만 믿고 기존 계정에 붙이면, 그 이메일을 제공자 쪽에서
@@ -191,6 +222,66 @@ class AuthApiTest {
                     .isInstanceOf(OAuth2AuthenticationException.class)
                     .extracting(e -> ((OAuth2AuthenticationException) e).getError().getErrorCode())
                     .isEqualTo("email_in_use");
+        }
+
+        @Test
+        @DisplayName("확인된 이메일이면 기존 회원에 연결해 로그인한다 — 가입 방법은 그대로, 비밀번호 로그인도 그대로")
+        void linksVerifiedEmail() throws Exception {
+            Member hong = members.findByEmail(EMAIL).orElseThrow();
+            SocialLoginService service = serviceReturning(kakaoVerified(EMAIL));
+
+            var first = (SocialLoginService.SocialUser) service.loadUser(kakaoRequest());
+            var second = (SocialLoginService.SocialUser) service.loadUser(kakaoRequest());
+
+            assertThat(first.principal().getId()).isEqualTo(hong.getId());
+            assertThat(second.principal().getId()).isEqualTo(hong.getId());
+            assertThat(members.count()).isEqualTo(1);
+            assertThat(socialLinks.count()).isEqualTo(1);
+            assertThat(members.findById(hong.getId()).orElseThrow().getProvider()).isEqualTo(MemberProvider.LOCAL);
+            mockMvc.perform(withCsrf(post("/api/auth/login"))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(loginBody(EMAIL, PASSWORD)))
+                    .andExpect(status().isOk());
+        }
+
+        @Test
+        @DisplayName("관리자 계정은 확인된 이메일이어도 연결하지 않는다 — 비밀번호로만")
+        void adminNotLinked() {
+            adminMembers.createOrPromoteByCommand(EMAIL, "홍길동", com.leoneferito.member.MemberRole.ADMIN);
+
+            assertThatThrownBy(() -> serviceReturning(kakaoVerified(EMAIL)).loadUser(kakaoRequest()))
+                    .isInstanceOf(OAuth2AuthenticationException.class)
+                    .extracting(e -> ((OAuth2AuthenticationException) e).getError().getErrorCode())
+                    .isEqualTo("admin_social");
+            assertThat(socialLinks.count()).isZero();
+        }
+
+        @Test
+        @DisplayName("네이버는 @naver.com 주소만 확인된 것으로 보고 연결한다")
+        void naverOnlyNaverDomain() {
+            authService.signup("leo@naver.com", PASSWORD, "레오", null);
+
+            assertThatThrownBy(() -> serviceReturning(naverAttributes(EMAIL)).loadUser(naverRequest()))
+                    .isInstanceOf(OAuth2AuthenticationException.class)
+                    .extracting(e -> ((OAuth2AuthenticationException) e).getError().getErrorCode())
+                    .isEqualTo("email_in_use");
+
+            var user = (SocialLoginService.SocialUser) serviceReturning(naverAttributes("Leo@Naver.com"))
+                    .loadUser(naverRequest());
+            assertThat(user.principal().getId())
+                    .isEqualTo(members.findByEmail("leo@naver.com").orElseThrow().getId());
+        }
+
+        @Test
+        @DisplayName("탈퇴하면 연결이 지워지고, 같은 카카오 계정으로 새로 가입할 수 있다")
+        void withdrawClearsLink() {
+            Member hong = members.findByEmail(EMAIL).orElseThrow();
+            serviceReturning(kakaoVerified(EMAIL)).loadUser(kakaoRequest());
+            accounts.withdraw(hong.getId(), PASSWORD);
+            assertThat(socialLinks.count()).isZero();
+
+            var again = (SocialLoginService.SocialUser) serviceReturning(kakaoVerified(EMAIL)).loadUser(kakaoRequest());
+            assertThat(again.principal().getId()).isNotEqualTo(hong.getId());
         }
 
         @Test

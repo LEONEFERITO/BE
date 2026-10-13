@@ -35,11 +35,12 @@ public class MemberAccountService {
     private final LoginAttemptRecorder attempts;
     private final ShopOrderRepository orders;
     private final ReturnRequestRepository returns;
+    private final MemberSocialLinkRepository socialLinks;
 
     public MemberAccountService(MemberRepository members, PasswordEncoder passwordEncoder,
                                 PasswordPolicy passwordPolicy, SessionTerminator sessionTerminator,
                                 LoginAttemptRecorder attempts, ShopOrderRepository orders,
-                                ReturnRequestRepository returns) {
+                                ReturnRequestRepository returns, MemberSocialLinkRepository socialLinks) {
         this.members = members;
         this.passwordEncoder = passwordEncoder;
         this.passwordPolicy = passwordPolicy;
@@ -47,6 +48,7 @@ public class MemberAccountService {
         this.attempts = attempts;
         this.orders = orders;
         this.returns = returns;
+        this.socialLinks = socialLinks;
     }
 
     @Transactional(readOnly = true)
@@ -106,6 +108,8 @@ public class MemberAccountService {
         // 세션은 이메일로 찾는다. 익명화하면 이메일이 바뀌므로 그 전에 끊는다.
         sessionTerminator.terminateAll(member.getEmail());
         member.withdraw(Instant.now());
+        // 연결한 간편 로그인도 지운다(V28) — 남겨 두면 그 카카오 · 네이버 계정이 탈퇴 회원에 묶여 다시 가입하지 못한다
+        socialLinks.deleteByMemberId(member.getId());
         log.info("회원 탈퇴 memberId={}", member.getId());
     }
 
