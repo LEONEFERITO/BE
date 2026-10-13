@@ -102,7 +102,8 @@ public class SiteImageController {
     /**
      * 배너 한 개. 길이는 hero_banner 의 CHECK 와 같다. 버튼 주소는 사이트 안 주소(/…) 또는 https 주소만 —
      * "//다른곳" 은 사이트 안 주소처럼 보이지만 밖으로 나가서 막는다. javascript: 같은 주소도 막힌다.
-     * 상품 배너인데 상품이 없거나, 직접 올리기인데 인물 사진이 없으면 400 — DB 까지 가지 않는다.
+     * 상품 배너인데 상품이 없거나, 직접 올리기인데 인물 사진이 없거나, 이미지 한 장인데 큰 사진이 없으면 400 — DB 까지 가지 않는다.
+     * 이미지 한 장은 큰 사진을 figure 로, 휴대폰용 세로 사진(선택)을 mobile 로 받는다.
      */
     public record BannerInput(
             @NotNull HeroBanner.Kind kind,
@@ -115,6 +116,7 @@ public class SiteImageController {
             @Valid PhotoInput figure,
             @Valid PhotoInput frameLeft,
             @Valid PhotoInput frameRight,
+            @Valid PhotoInput mobile,
             @NotNull Boolean visible) {
 
         @AssertTrue(message = "상품 정보 가져오기에는 상품이 필요합니다")
@@ -122,15 +124,15 @@ public class SiteImageController {
             return kind != HeroBanner.Kind.PRODUCT || productId != null;
         }
 
-        @AssertTrue(message = "직접 등록에는 가운데 인물 사진이 필요합니다")
+        @AssertTrue(message = "직접 등록에는 가운데 인물 사진이, 이미지 한 장에는 큰 사진이 필요합니다")
         public boolean isFigureGivenWhenNeeded() {
-            return kind != HeroBanner.Kind.CUSTOM || (figure != null && figure.mediaId() != null);
+            return kind == HeroBanner.Kind.PRODUCT || (figure != null && figure.mediaId() != null);
         }
 
         SiteImageService.BannerChange toChange() {
             return new SiteImageService.BannerChange(kind, productId,
                     new HeroBanner.Text(eyebrow, title, subtitle, ctaLabel, ctaUrl),
-                    ref(figure), ref(frameLeft), ref(frameRight), visible);
+                    ref(figure), ref(frameLeft), ref(frameRight), ref(mobile), visible);
         }
 
         private static SiteImageService.PhotoRef ref(PhotoInput p) {
@@ -153,13 +155,14 @@ public class SiteImageController {
 
     public record BannerView(HeroBanner.Kind kind, String productSlug, String eyebrow, String title, String subtitle,
                              String ctaLabel, String ctaUrl, PhotoView figure, PhotoView frameLeft,
-                             PhotoView frameRight) {
+                             PhotoView frameRight, PhotoView mobile) {
         static BannerView of(HeroBanner b, MediaUrls urls) {
             return new BannerView(b.getKind(), b.getProduct() == null ? null : b.getProduct().getSlug(),
                     b.getEyebrow(), b.getTitle(), b.getSubtitle(), b.getCtaLabel(), b.getCtaUrl(),
                     PhotoView.of(b.getFigure(), b.getFigureAlt(), urls),
                     PhotoView.of(b.getFrameLeft(), b.getFrameLeftAlt(), urls),
-                    PhotoView.of(b.getFrameRight(), b.getFrameRightAlt(), urls));
+                    PhotoView.of(b.getFrameRight(), b.getFrameRightAlt(), urls),
+                    PhotoView.of(b.getMobile(), b.getMobileAlt(), urls));
         }
     }
 
@@ -174,7 +177,7 @@ public class SiteImageController {
     public record AdminBannerView(UUID id, HeroBanner.Kind kind, UUID productId, String productSlug,
                                   String eyebrow, String title, String subtitle, String ctaLabel, String ctaUrl,
                                   AdminPhotoView figure, AdminPhotoView frameLeft, AdminPhotoView frameRight,
-                                  boolean visible, boolean shown, Instant updatedAt) {
+                                  AdminPhotoView mobile, boolean visible, boolean shown, Instant updatedAt) {
         static AdminBannerView of(HeroBanner b, MediaUrls urls) {
             return new AdminBannerView(b.getId(), b.getKind(),
                     b.getProduct() == null ? null : b.getProduct().getId(),
@@ -183,6 +186,7 @@ public class SiteImageController {
                     AdminPhotoView.of(b.getFigure(), b.getFigureAlt(), urls),
                     AdminPhotoView.of(b.getFrameLeft(), b.getFrameLeftAlt(), urls),
                     AdminPhotoView.of(b.getFrameRight(), b.getFrameRightAlt(), urls),
+                    AdminPhotoView.of(b.getMobile(), b.getMobileAlt(), urls),
                     b.isVisible(), b.isShown(), b.getUpdatedAt());
         }
     }

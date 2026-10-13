@@ -164,10 +164,12 @@ public class SiteImageService {
                     .orElseThrow(() -> new ResourceNotFoundException("공개 상품 없음: id=" + c.productId()));
         }
         boolean custom = c.kind() == HeroBanner.Kind.CUSTOM;
+        boolean image = c.kind() == HeroBanner.Kind.IMAGE;
         banner.change(c.kind(), product, c.text(),
-                custom ? photo(c.figure()) : EMPTY_PHOTO,
+                custom || image ? photo(c.figure()) : EMPTY_PHOTO,
                 custom ? photo(c.frameLeft()) : EMPTY_PHOTO,
                 custom ? photo(c.frameRight()) : EMPTY_PHOTO,
+                image ? photo(c.mobile()) : EMPTY_PHOTO,
                 c.visible());
     }
 
@@ -190,7 +192,7 @@ public class SiteImageService {
             b.getProduct().getSlug();
             b.getProduct().getStatus();
         }
-        for (MediaAsset m : new MediaAsset[] {b.getFigure(), b.getFrameLeft(), b.getFrameRight()}) {
+        for (MediaAsset m : new MediaAsset[] {b.getFigure(), b.getFrameLeft(), b.getFrameRight(), b.getMobile()}) {
             if (m != null) {
                 m.getStorageKey();
             }
@@ -198,9 +200,13 @@ public class SiteImageService {
         return b;
     }
 
-    /** 배너 한 개의 저장 값. 상품은 상품 배너일 때만, 사진은 직접 올리기일 때만 쓴다. */
+    /**
+     * 배너 한 개의 저장 값. 상품은 상품 배너일 때만, 주 사진(figure)은 직접 올리기 · 이미지 한 장일 때만,
+     * 액자는 직접 올리기일 때만, 휴대폰 사진(mobile)은 이미지 한 장일 때만 쓴다.
+     */
     public record BannerChange(HeroBanner.Kind kind, UUID productId, HeroBanner.Text text,
-                               PhotoRef figure, PhotoRef frameLeft, PhotoRef frameRight, boolean visible) {
+                               PhotoRef figure, PhotoRef frameLeft, PhotoRef frameRight, PhotoRef mobile,
+                               boolean visible) {
     }
 
     /** 사진 한 장 — 올린 이미지 id 와 설명. id 가 없으면 빈 칸. */

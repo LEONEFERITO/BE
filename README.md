@@ -130,8 +130,9 @@ docker compose -f docker-compose.prod.yml run --rm api \
 ```
 
 **7. 간편 로그인 · 결제** — 카카오 · 네이버 개발자 콘솔에 운영 Redirect URI 를 추가한다:
-`https://api.leoneferito.kr/login/oauth2/code/kakao` · `…/naver`. 사이트 도메인(카카오 › 플랫폼 › Web · 네이버 서비스 URL)에는
-`https://new.leoneferito.kr` 을 넣는다. 키를 `.env` 에 넣고 `docker compose -f docker-compose.prod.yml up -d api` — 버튼은 화면을 다시 빌드하지 않아도 나온다.
+`https://api.leoneferito.kr/login/oauth2/code/kakao` · `…/naver` (오픈 뒤에도 그대로 — API 주소다).
+사이트 주소는 정식 도메인으로: 네이버 서비스 URL `https://leoneferito.kr`(대표 도메인 하나면 하위 주소도 인정),
+카카오 › 플랫폼 › Web 사이트 도메인 `https://leoneferito.kr` · `https://www.leoneferito.kr` · `https://new.leoneferito.kr`(오픈 전 시험용, 오픈 뒤 지움). 키를 `.env` 에 넣고 `docker compose -f docker-compose.prod.yml up -d api` — 버튼은 화면을 다시 빌드하지 않아도 나온다.
 
 결제는 **나이스페이**(2026-10-12, 포스타트로 시작). 대표님이 상점을 만들고 개발자를 멤버로 초대하면
 start.nicepay.co.kr › 개발정보에서 키를 확인해 `.env` 에 넣는다. 테스트 상점 키 + `NICEPAY_API_BASE=https://sandbox-api.nicepay.co.kr`

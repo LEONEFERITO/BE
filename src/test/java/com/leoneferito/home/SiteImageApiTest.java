@@ -355,6 +355,43 @@ class SiteImageApiTest {
     }
 
     @Test
+    @DisplayName("이미지 한 장 — 큰 사진이 있어야 하고, 휴대폰 사진은 고르면 함께 나간다. 액자 · 상품은 남지 않는다")
+    void imageBanner() throws Exception {
+        String wide = image("wide").getId().toString();
+        String tall = image("tall").getId().toString();
+        Product shirt = product("hero-shirt", true);
+        String body = """
+                {"kind":"IMAGE","productId":"%s","eyebrow":"","title":"가을 컬렉션","subtitle":"","ctaLabel":"보러 가기",
+                 "ctaUrl":"/products/hero-shirt/","figure":{"mediaId":"%s","alt":" 가을 화보 "},
+                 "frameLeft":{"mediaId":"%s","alt":"남으면 안 됨"},"frameRight":null,
+                 "mobile":{"mediaId":"%s","alt":"세로 화보"},"visible":true}
+                """.formatted(shirt.getId(), wide, wide, tall);
+        String id = create(body);
+        mockMvc.perform(get("/api/hero-banners"))
+                .andExpect(jsonPath("$[0].kind").value("IMAGE"))
+                .andExpect(jsonPath("$[0].figure.url").isNotEmpty())
+                .andExpect(jsonPath("$[0].figure.alt").value("가을 화보"))
+                .andExpect(jsonPath("$[0].mobile.alt").value("세로 화보"))
+                .andExpect(jsonPath("$[0].ctaUrl").value("/products/hero-shirt/"))
+                // 이미지 한 장에는 액자 · 상품이 없다 — 보내도 남지 않는다
+                .andExpect(jsonPath("$[0].frameLeft").doesNotExist())
+                .andExpect(jsonPath("$[0].productSlug").doesNotExist());
+
+        // 큰 사진 없이 → 400
+        mockMvc.perform(csrf(mockMvc, post(BANNERS), admin).contentType(MediaType.APPLICATION_JSON)
+                        .content(body.replace("\"figure\":{\"mediaId\":\"" + wide + "\",\"alt\":\" 가을 화보 \"}",
+                                "\"figure\":null")))
+                .andExpect(status().isBadRequest());
+
+        // 직접 등록(누끼)으로 바꾸면 휴대폰 사진은 걷힌다
+        mockMvc.perform(csrf(mockMvc, put(BANNERS + "/" + id), admin).contentType(MediaType.APPLICATION_JSON)
+                        .content(body.replace("\"kind\":\"IMAGE\"", "\"kind\":\"CUSTOM\"")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mobile").doesNotExist())
+                .andExpect(jsonPath("$.frameLeft.alt").value("남으면 안 됨"));
+    }
+
+    @Test
     @DisplayName("손님은 배너를 만들 수도, 관리자 목록을 볼 수도 없다")
     void memberCannotChangeBanners() throws Exception {
         Cookie buyer = login(mockMvc, "buyer@example.com", PASSWORD);
