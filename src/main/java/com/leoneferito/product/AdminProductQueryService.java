@@ -101,6 +101,7 @@ public class AdminProductQueryService {
                 sku.getSize(),
                 sku.getSortOrder(),
                 sku.isOrderable(),
+                sku.getStock(),
                 sku.getMeasurements().stream()
                         // 공개 응답과 같은 순서(enum 선언 순서). 화면이 둘을 비교할 수 있게.
                         .sorted(Comparator.comparing(ProductMeasurement::getPart))

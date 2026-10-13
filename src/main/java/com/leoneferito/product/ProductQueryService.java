@@ -138,9 +138,12 @@ public class ProductQueryService {
     }
 
     private ProductResponse.Sku toSku(ProductSku sku) {
+        Integer stock = sku.getStock();
         return new ProductResponse.Sku(
                 sku.getSize(),
                 sku.isOrderable(),
+                stock != null && stock == 0,
+                stock != null && stock > 0 && stock <= 5 ? stock : null,
                 sku.getMeasurements().stream()
                         // 부위 순서를 enum 선언 순서로 고정한다. 저장 순서에 맡기면
                         // 상품마다 표의 행 순서가 달라져서 비교가 안 된다.

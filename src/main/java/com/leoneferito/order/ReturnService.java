@@ -151,7 +151,7 @@ public class ReturnService {
     private void requireOrderableSize(OrderItem oi, String size) {
         Product p = products.findById(oi.getProductId())
                 .orElseThrow(() -> new ReturnException("이 상품은 교환할 수 없습니다. 반품으로 신청해 주세요."));
-        boolean ok = p.getSkus().stream().anyMatch(s -> s.getSize().equals(size) && s.isOrderable());
+        boolean ok = p.getSkus().stream().anyMatch(s -> s.getSize().equals(size) && s.isAvailable());
         if (!ok) {
             throw new ReturnException(size + " 사이즈로는 지금 교환할 수 없습니다.");
         }

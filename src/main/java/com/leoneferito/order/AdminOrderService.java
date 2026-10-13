@@ -2,6 +2,8 @@ package com.leoneferito.order;
 
 import com.leoneferito.common.error.ResourceNotFoundException;
 import com.leoneferito.payment.PaymentGateway;
+import com.leoneferito.product.FrontRebuildTrigger;
+import com.leoneferito.product.ProductRepository;
 import java.time.Instant;
 import java.util.EnumSet;
 import java.util.Locale;
@@ -12,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,10 +35,15 @@ public class AdminOrderService {
 
     private final ShopOrderRepository orders;
     private final PaymentGateway gateway;
+    private final ProductRepository products;
+    private final ApplicationEventPublisher events;
 
-    public AdminOrderService(ShopOrderRepository orders, PaymentGateway gateway) {
+    public AdminOrderService(ShopOrderRepository orders, PaymentGateway gateway, ProductRepository products,
+                             ApplicationEventPublisher events) {
         this.orders = orders;
         this.gateway = gateway;
+        this.products = products;
+        this.events = events;
     }
 
     /** 검색. status 가 없으면 결제 전 주문서를 뺀 전부. */
@@ -87,6 +95,10 @@ public class AdminOrderService {
         }
         gateway.cancel(order.getPaymentKey(), order.getOrderNumber(), reason.trim(), "cancel-" + order.getOrderNumber(), null);
         order.cancel(actorId, reason.trim(), order.getTotalAmountKrw(), Instant.now());
+        // 발송 전 취소 — 재고를 세는 사이즈는 돌려놓는다 (V30)
+        if (OrderService.restock(products, order)) {
+            events.publishEvent(new FrontRebuildTrigger.CatalogChanged("재고"));
+        }
         log.info("주문 취소(관리자) orderNumber={} actorId={}", orderNumber, actorId);
     }
 

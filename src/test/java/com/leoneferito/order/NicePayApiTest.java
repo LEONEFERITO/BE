@@ -338,6 +338,99 @@ class NicePayApiTest {
         assertThat(orderStatus((String) o[0])).isEqualTo("PENDING_PAYMENT");
     }
 
+    private Integer stock() {
+        return jdbc.queryForObject("SELECT s.stock FROM product_sku s JOIN product p ON p.id = s.product_id "
+                + "WHERE p.slug = 'np-shirt' AND s.size = '100'", Integer.class);
+    }
+
+    private void setStock(Integer n) {
+        jdbc.update("UPDATE product_sku SET stock = ? WHERE size = '100' AND product_id = "
+                + "(SELECT id FROM product WHERE slug = 'np-shirt')", n);
+    }
+
+    @Test
+    @DisplayName("재고 — 결제가 승인되면 줄고, 발송 전 취소면 돌아온다")
+    void stockTakenAndReturned() throws Exception {
+        setStock(2);
+        Object[] o = order();
+        assertThat(stock()).isEqualTo(2); // 주문서만으로는 줄지 않는다
+        returned((String) o[0], "tid_stock", (long) o[1]).andExpect(status().isSeeOther());
+        assertThat(stock()).isEqualTo(1);
+        mockMvc.perform(csrf(mockMvc, post("/api/orders/" + o[0] + "/cancel"), buyer)).andExpect(status().isOk());
+        assertThat(stock()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("재고 — 주문서를 만든 뒤 품절되면 승인을 보내지 않는다(청구 없음). 승인이 실패하면 줄인 수량도 돌아온다")
+    void soldOutBeforeApproval() throws Exception {
+        setStock(1);
+        Object[] o = order();
+        setStock(0); // 그사이 다른 손님이 마지막 한 벌을 샀다
+        ResultActions r = returned((String) o[0], "tid_late", (long) o[1]).andExpect(status().isSeeOther());
+        assertThat(location(r)).contains("/order/fail/?code=OUT_OF_STOCK");
+        assertThat(approvals()).isZero();
+        assertThat(orderStatus((String) o[0])).isEqualTo("PENDING_PAYMENT");
+        assertThat(stock()).isZero();
+
+        // 승인 응답이 틀려 망취소된 경우 — 줄였던 재고가 돌아와 있다
+        setStock(1);
+        Object[] o2 = order2();
+        returned((String) o2[0], "badsig_stock", (long) o2[1]).andExpect(status().isSeeOther());
+        assertThat(stock()).isEqualTo(1);
+    }
+
+    /** 첫 주문서가 장바구니 줄을 쓰고 남아 있으므로, 같은 줄로 주문서를 하나 더 만든다. */
+    private Object[] order2() throws Exception {
+        String cart = mockMvc.perform(get("/api/cart").cookie(buyer)).andReturn().getResponse().getContentAsString();
+        String line = JsonPath.<List<String>>read(cart, "$.items[*].id").getFirst();
+        String res = mockMvc.perform(csrf(mockMvc, post("/api/orders"), buyer).contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"cartItemIds":["%s"],"recipientName":"김구매","recipientPhone":"010-1111-2222",
+                                 "zipCode":"16677","address1":"수원시 영통구 매영로 1","agree":true}
+                                """.formatted(line)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        return new Object[] {JsonPath.read(res, "$.orderNumber"), ((Number) JsonPath.read(res, "$.amount")).longValue()};
+    }
+
+    @Test
+    @DisplayName("재고 — 남은 수량보다 많이 담을 수 없고, 품절이면 주문서를 만들 수 없다. 손님 화면에는 품절 · 몇 벌 남음")
+    void cartAndProductRespectStock() throws Exception {
+        setStock(2);
+        mockMvc.perform(get("/api/products/np-shirt"))
+                .andExpect(jsonPath("$.skus[0].soldOut").value(false))
+                .andExpect(jsonPath("$.skus[0].remaining").value(2));
+        mockMvc.perform(csrf(mockMvc, post("/api/cart/items"), buyer).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"slug\":\"np-shirt\",\"size\":\"100\",\"quantity\":3}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("100 사이즈는 2벌 남았습니다. 수량을 줄여 주세요."));
+
+        Object[] o = order(); // 1벌 담고 주문서
+        setStock(0);
+        mockMvc.perform(get("/api/products/np-shirt"))
+                .andExpect(jsonPath("$.skus[0].soldOut").value(true))
+                .andExpect(jsonPath("$.skus[0].remaining").doesNotExist());
+        mockMvc.perform(get("/api/cart").cookie(buyer))
+                .andExpect(jsonPath("$.items[0].available").value(false))
+                .andExpect(jsonPath("$.items[0].unavailableReason").value("100 사이즈는 품절입니다."));
+        String line = JsonPath.<List<String>>read(
+                mockMvc.perform(get("/api/cart").cookie(buyer)).andReturn().getResponse().getContentAsString(),
+                "$.items[*].id").getFirst();
+        mockMvc.perform(csrf(mockMvc, post("/api/orders"), buyer).contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"cartItemIds":["%s"],"recipientName":"김구매","recipientPhone":"010-1111-2222",
+                                 "zipCode":"16677","address1":"수원시 영통구 매영로 1","agree":true}
+                                """.formatted(line)))
+                .andExpect(status().isBadRequest());
+
+        // 세지 않으면(null) 예전처럼 — 품절도 남은 수량도 없다
+        setStock(null);
+        mockMvc.perform(get("/api/products/np-shirt"))
+                .andExpect(jsonPath("$.skus[0].soldOut").value(false))
+                .andExpect(jsonPath("$.skus[0].remaining").doesNotExist());
+        assertThat(o).isNotNull();
+    }
+
     @Test
     @DisplayName("손님 취소 — 나이스페이 취소가 먼저 성공해야 취소되고, 취소 주문번호는 원 주문과 다른 고유 값이다")
     void customerCancel() throws Exception {

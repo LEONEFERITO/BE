@@ -68,4 +68,12 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
 
     /** slug 는 URL 이라 중복되면 안 된다. DB 유니크 제약과 짝을 이루는 사전 확인용이다. */
     boolean existsBySlug(String slug);
+
+    /**
+     * 재고를 줄이거나 되돌릴 사이즈 한 줄 — 행을 잠그고 읽는다(V30). 두 손님이 마지막 한 벌을 동시에 결제하면
+     * 한쪽은 기다렸다가 줄어든 수량을 본다. 사이즈가 지워졌으면 비어 있다.
+     */
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT s FROM ProductSku s WHERE s.product.id = :productId AND s.size = :size")
+    Optional<ProductSku> findSkuForUpdate(@Param("productId") UUID productId, @Param("size") String size);
 }

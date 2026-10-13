@@ -144,7 +144,7 @@ class AdminApiTest {
                   "skus": [
                     { "size": "95", "measurements": [
                         { "part": "SHOULDER", "valueCm": 45.0, "toleranceCm": 1.0 } ] },
-                    { "size": "100" }
+                    { "size": "100", "stock": 3 }
                   ]
                 }
                 """.formatted(slug);
@@ -335,6 +335,21 @@ class AdminApiTest {
     @Nested
     @DisplayName("상품 등록과 공개")
     class Lifecycle {
+
+        @Test
+        @DisplayName("사이즈별 재고 — 적은 사이즈만 센다(비우면 세지 않음), 음수는 400")
+        void skuStock() throws Exception {
+            String id = createProduct("stock-shirt");
+            mockMvc.perform(asAdmin(get("/api/admin/products/" + id)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.skus[0].size").value("95"))
+                    .andExpect(jsonPath("$.skus[0].stock").doesNotExist())
+                    .andExpect(jsonPath("$.skus[1].stock").value(3));
+            mockMvc.perform(asAdmin(post("/api/admin/products"))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(saveBody("minus-stock").replace("\"stock\": 3", "\"stock\": -1")))
+                    .andExpect(status().isBadRequest());
+        }
 
         @Test
         @DisplayName("등록하면 초안이다 — 저장이 곧 공개가 아니다")

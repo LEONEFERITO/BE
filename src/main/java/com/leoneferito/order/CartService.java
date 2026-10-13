@@ -55,21 +55,29 @@ public class CartService {
     public void add(UUID memberId, String slug, String size, int quantity) {
         Product product = products.findPublishedBySlug(slug)
                 .orElseThrow(() -> new CartException("판매 중인 상품이 아닙니다."));
-        orderableSku(product, size);
         if (product.getPriceKrw() == null) {
             throw new CartException("아직 가격이 정해지지 않은 상품입니다.");
         }
 
-        carts.findByMemberIdAndProductIdAndSize(memberId, product.getId(), size)
-                .ifPresentOrElse(
-                        existing -> existing.setQuantity(existing.getQuantity() + quantity),
-                        () -> carts.save(new CartItem(memberId, product.getId(), size, quantity)));
+        var existing = carts.findByMemberIdAndProductIdAndSize(memberId, product.getId(), size);
+        // 이미 담은 수량까지 더해서 본다 — 재고가 2벌인데 1벌씩 세 번 담는 걸 막는다
+        orderableSku(product, size, existing.map(e -> (int) e.getQuantity()).orElse(0) + quantity);
+        existing.ifPresentOrElse(
+                e -> e.setQuantity(e.getQuantity() + quantity),
+                () -> carts.save(new CartItem(memberId, product.getId(), size, quantity)));
     }
 
     @Transactional
     public void changeQuantity(UUID memberId, UUID itemId, int quantity) {
         CartItem item = carts.findByIdAndMemberId(itemId, memberId)
                 .orElseThrow(() -> new CartException("장바구니에 없는 상품입니다."));
+        // 수량을 세는 사이즈면 남은 수량까지만 (V30). 상품이 내려갔거나 사이즈가 없으면 여기서 막지 않는다 — 줄이 "주문할 수 없음" 으로 보인다
+        products.findById(item.getProductId())
+                .flatMap(p -> p.getSkus().stream().filter(s -> s.getSize().equals(item.getSize())).findFirst())
+                .filter(s -> s.isOrderable() && !s.canSupply(quantity))
+                .ifPresent(s -> {
+                    throw new CartException(stockMessage(s));
+                });
         item.setQuantity(quantity);
     }
 
@@ -78,22 +86,38 @@ public class CartService {
         carts.findByIdAndMemberId(itemId, memberId).ifPresent(carts::delete);
     }
 
-    static ProductSku orderableSku(Product product, String size) {
-        return product.getSkus().stream()
+    /** 이 사이즈를 이만큼 주문할 수 있는가 — 제작할 수 있고, 수량을 센다면(V30) 그만큼 남았다. 아니면 이유와 함께 거절. */
+    static ProductSku orderableSku(Product product, String size, int quantity) {
+        ProductSku sku = product.getSkus().stream()
                 .filter(s -> s.getSize().equals(size))
                 .filter(ProductSku::isOrderable)
                 .findFirst()
                 .orElseThrow(() -> new CartException(size + " 사이즈는 지금 주문할 수 없습니다."));
+        if (!sku.canSupply(quantity)) {
+            throw new CartException(stockMessage(sku));
+        }
+        return sku;
+    }
+
+    /** "95 사이즈는 품절입니다." · "95 사이즈는 2벌 남았습니다." */
+    static String stockMessage(ProductSku sku) {
+        return sku.getStock() == null || sku.getStock() == 0
+                ? sku.getSize() + " 사이즈는 품절입니다."
+                : sku.getSize() + " 사이즈는 " + sku.getStock() + "벌 남았습니다. 수량을 줄여 주세요.";
     }
 
     private Line toLine(CartItem item, Product p) {
         boolean published = p != null && p.getStatus() == ProductStatus.PUBLISHED;
-        boolean sizeOk = published && p.getSkus().stream()
-                .anyMatch(s -> s.getSize().equals(item.getSize()) && s.isOrderable());
+        ProductSku sku = published ? p.getSkus().stream()
+                .filter(s -> s.getSize().equals(item.getSize()) && s.isOrderable())
+                .findFirst().orElse(null) : null;
+        boolean sizeOk = sku != null;
+        boolean stockOk = sizeOk && sku.canSupply(item.getQuantity());
         Long price = published ? p.getPriceKrw() : null;
-        boolean available = sizeOk && price != null;
+        boolean available = stockOk && price != null;
         String reason = !published ? "판매가 끝난 상품입니다."
                 : !sizeOk ? "이 사이즈는 지금 주문할 수 없습니다."
+                : !stockOk ? stockMessage(sku)
                 : price == null ? "가격이 정해지지 않은 상품입니다." : null;
         return new Line(
                 item.getId(),

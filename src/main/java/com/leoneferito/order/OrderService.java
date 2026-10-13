@@ -5,8 +5,10 @@ import com.leoneferito.media.MediaUrls;
 import com.leoneferito.order.CartItem.CartException;
 import com.leoneferito.payment.PaymentGateway;
 import com.leoneferito.payment.PaymentGateway.PaymentException;
+import com.leoneferito.product.FrontRebuildTrigger;
 import com.leoneferito.product.Product;
 import com.leoneferito.product.ProductRepository;
+import com.leoneferito.product.ProductSku;
 import com.leoneferito.product.ProductStatus;
 import java.security.SecureRandom;
 import java.time.Instant;
@@ -24,6 +26,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -47,6 +50,14 @@ import org.springframework.transaction.annotation.Transactional;
  * 결제사 키가 없거나 배송비 정책이 없으면 주문서를 만들지 않는다. 결제할 수 없는 주문서가 쌓이거나,
  * 지어낸 배송비가 결제되는 것보다 낫다.
  *
+ * <h2>재고 (V30, 사이즈별 남은 수량)</h2>
+ * 수량을 세는 사이즈는 주문서를 만들 때 한 번 보고(모자라면 주문서를 만들지 않는다), <b>결제를 승인하기 직전</b>에
+ * 그 사이즈 행을 잠그고 다시 본 뒤 줄인다({@link #takeStock}). 모자라면 결제사에 승인을 보내지 않는다 —
+ * 승인하지 않은 결제는 청구되지 않는다. 승인이 실패하면 트랜잭션이 되돌아가 줄인 수량도 돌아온다.
+ * 발송 전 취소(손님 · 관리자)면 돌려놓는다({@link #restock}). 반품은 자동으로 돌려놓지 않는다 — 돌아온 옷의 상태를 사람이 본다.
+ * 손님 화면(정적)은 빌드 때 품절 · "몇 벌 남음" 을 굳힌다 — 그래서 수량이 화면에 보이는 범위(5벌 이하 · 품절 · 품절에서 돌아옴)로
+ * 바뀌면 다시 만든다({@link #shownStockChanged}). 화면이 늦어도 장바구니 · 주문서는 서버가 지금 수량으로 막는다.
+ *
  * <h2>웹훅으로 한 번 더 맞춘다 ({@link #reconcile})</h2>
  * 결제사는 승인했는데 우리 저장이 실패하는 경우(승인 직후 서버가 죽는 등)를 위해서다. 웹훅 본문은 믿지 않고
  * 결제 키로 결제사에 다시 물어 맞춘다.
@@ -69,9 +80,12 @@ public class OrderService {
     private final MediaUrls mediaUrls;
     private final ShippingPolicy shipping;
     private final PaymentGateway gateway;
+    private final ApplicationEventPublisher events;
 
     public OrderService(ShopOrderRepository orders, CartItemRepository carts, ProductRepository products,
-                        MediaUrls mediaUrls, ShippingPolicy shipping, PaymentGateway gateway) {
+                        MediaUrls mediaUrls, ShippingPolicy shipping, PaymentGateway gateway,
+                        ApplicationEventPublisher events) {
+        this.events = events;
         this.orders = orders;
         this.carts = carts;
         this.products = products;
@@ -153,7 +167,7 @@ public class OrderService {
                     || p.getLeadTimeDays() == null) {
                 throw new CartException("판매가 끝났거나 주문할 수 없는 상품이 있습니다. 장바구니를 확인해 주세요.");
             }
-            CartService.orderableSku(p, line.getSize());
+            CartService.orderableSku(p, line.getSize(), line.getQuantity());
             items.add(new OrderItem(UUID.randomUUID(), p.getId(), p.getSlug(), p.getName(),
                     p.mainImage().map(img -> mediaUrls.urlFor(img.getMedia())).orElse(null),
                     line.getSize(), p.getPriceKrw(), line.getQuantity(), p.getLeadTimeDays(), i));
@@ -203,6 +217,11 @@ public class OrderService {
             log.warn("결제 금액 불일치 orderNumber={} expected={} got={}",
                     orderNumber, order.getTotalAmountKrw(), amount);
             throw new AmountMismatchException();
+        }
+
+        // 재고 — 승인을 보내기 전에 잠그고 줄인다. 모자라면 여기서 멈춘다(결제사에 승인을 보내지 않으니 청구되지 않는다)
+        if (takeStock(order)) {
+            events.publishEvent(new FrontRebuildTrigger.CatalogChanged("재고"));
         }
 
         PaymentGateway.Payment payment = gateway.approve(paymentKey, orderNumber, order.getTotalAmountKrw());
@@ -260,6 +279,10 @@ public class OrderService {
                 return;
             }
             order.markPaid(paymentKey, p.method(), p.approvedAt() == null ? Instant.now() : p.approvedAt());
+            // 이미 결제된 돈이다 — 모자라도 막지 않고 남은 만큼만 줄인 뒤 사람이 보게 남긴다
+            if (takeStockLeniently(order)) {
+                events.publishEvent(new FrontRebuildTrigger.CatalogChanged("재고"));
+            }
             log.warn("웹훅으로 결제 반영 orderNumber={} — 승인 응답을 놓친 주문", order.getOrderNumber());
             return;
         }
@@ -282,6 +305,9 @@ public class OrderService {
         String reason = "고객 요청 취소";
         gateway.cancel(order.getPaymentKey(), order.getOrderNumber(), reason, "cancel-" + order.getOrderNumber(), null);
         order.cancel(null, reason, order.getTotalAmountKrw(), Instant.now());
+        if (restock(products, order)) {
+            events.publishEvent(new FrontRebuildTrigger.CatalogChanged("재고"));
+        }
         log.info("주문 취소(고객) orderNumber={}", orderNumber);
         return loaded(order);
     }
@@ -327,6 +353,69 @@ public class OrderService {
         return orders.findByOrderNumberForUpdate(orderNumber)
                 .filter(o -> o.isOwnedBy(memberId))
                 .orElseThrow(() -> new ResourceNotFoundException("주문 없음 orderNumber=" + orderNumber));
+    }
+
+    /**
+     * 결제 승인 직전 — 수량을 세는 사이즈를 잠그고 줄인다. 하나라도 모자라면 전부 그대로 두고 거절한다(트랜잭션).
+     * 손님 화면에 보이는 수량이 바뀌었으면 true.
+     */
+    private boolean takeStock(ShopOrder order) {
+        boolean shown = false;
+        for (OrderItem item : order.getItems()) {
+            ProductSku sku = products.findSkuForUpdate(item.getProductId(), item.getSize()).orElse(null);
+            if (sku == null || sku.getStock() == null) {
+                continue;
+            }
+            if (!sku.canSupply(item.getQuantity())) {
+                log.info("재고 부족으로 결제 승인 안 함 orderNumber={} size={} stock={} want={}",
+                        order.getOrderNumber(), item.getSize(), sku.getStock(), item.getQuantity());
+                throw new PaymentException("OUT_OF_STOCK", item.getProductName() + " " + item.getSize()
+                        + " 사이즈가 그사이 품절되어 결제를 진행하지 않았습니다. 결제 금액은 청구되지 않습니다.");
+            }
+            int before = sku.getStock();
+            sku.take(item.getQuantity());
+            shown |= shownStockChanged(before, sku.getStock());
+        }
+        return shown;
+    }
+
+    /** 이미 결제된 주문(웹훅으로 늦게 안 경우) — 모자라면 0 까지만 줄이고 로그를 남긴다. */
+    private boolean takeStockLeniently(ShopOrder order) {
+        boolean shown = false;
+        for (OrderItem item : order.getItems()) {
+            ProductSku sku = products.findSkuForUpdate(item.getProductId(), item.getSize()).orElse(null);
+            if (sku == null || sku.getStock() == null) {
+                continue;
+            }
+            int before = sku.getStock();
+            if (before < item.getQuantity()) {
+                log.error("재고보다 많이 결제됨 — 사람이 확인 orderNumber={} size={} stock={} want={}",
+                        order.getOrderNumber(), item.getSize(), before, item.getQuantity());
+            }
+            sku.take(Math.min(before, item.getQuantity()));
+            shown |= shownStockChanged(before, sku.getStock());
+        }
+        return shown;
+    }
+
+    /** 발송 전 취소 — 수량을 세는 사이즈는 돌려놓는다. 사이즈가 지워졌으면 그냥 지나간다. 화면에 보이는 수량이 바뀌었으면 true. */
+    static boolean restock(ProductRepository products, ShopOrder order) {
+        boolean shown = false;
+        for (OrderItem item : order.getItems()) {
+            ProductSku sku = products.findSkuForUpdate(item.getProductId(), item.getSize()).orElse(null);
+            if (sku == null || sku.getStock() == null) {
+                continue;
+            }
+            int before = sku.getStock();
+            sku.putBack(item.getQuantity());
+            shown |= shownStockChanged(before, sku.getStock());
+        }
+        return shown;
+    }
+
+    /** 손님 화면은 5벌 이하일 때만 수량을 보이고(품절 포함), 그 위는 "있음" 하나다 — 그 범위에 닿는 변화만 다시 만들 이유가 된다. */
+    static boolean shownStockChanged(int before, int after) {
+        return before != after && Math.min(before, after) <= 5;
     }
 
     /** 예) LF20261001-K7MQ2XRA. 날짜 + 무작위 8자 — 순번이면 하루 주문 수가 샌다. */

@@ -169,10 +169,12 @@ public final class AdminProductRequests {
             Integer sortOrder) {
     }
 
+    /** {@code stock} — 남은 수량(V30). 비우면 세지 않는다(주문 후 제작). 0 이면 품절. */
     public record Sku(
             @NotBlank @Size(max = 20) String size,
             Integer sortOrder,
             Boolean orderable,
+            @jakarta.validation.constraints.PositiveOrZero @jakarta.validation.constraints.Max(99999) Integer stock,
             @Valid List<Measurement> measurements) {
     }
 

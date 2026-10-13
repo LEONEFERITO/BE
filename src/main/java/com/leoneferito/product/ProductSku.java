@@ -18,9 +18,11 @@ import java.util.UUID;
 /**
  * 사이즈 한 줄.
  *
- * <p><b>재고 수량 필드가 없다.</b> 주문 후 제작이라 세어 둘 물건이 없다.
- * 대신 {@link #orderable} 이 "이 사이즈를 제작할 수 있는가" 를 뜻한다 —
- * 패턴이 없거나 원단이 끊긴 경우 {@code false} 다.
+ * <p>{@link #orderable} 은 "이 사이즈를 제작할 수 있는가" 다 — 패턴이 없거나 원단이 끊긴 경우 {@code false}.
+ *
+ * <p>{@link #stock} (V30, 2026-10-13 "사이즈별 재고") — 남은 수량. <b>비워 두면(null) 세지 않는다</b>:
+ * 주문 후 제작이라 세어 둘 물건이 없는 지금까지의 방식이다. 숫자를 넣으면 그만큼만 판다 — 결제가 승인될 때 줄고
+ * ({@code OrderService}), 발송 전 취소면 돌아온다. 0 이면 품절.
  *
  * <p>{@link #sortOrder} 를 따로 두는 이유: {@code size} 로 정렬하면 문자열 비교라
  * 100 이 95 앞에 온다. 숫자로 캐스팅하는 방법은 S/M/L 이 들어오는 순간 깨진다.
@@ -45,6 +47,10 @@ public class ProductSku {
 
     @Column(name = "is_orderable", nullable = false)
     private boolean orderable = true;
+
+    /** 남은 수량 (V30). null = 세지 않음(주문 후 제작), 0 = 품절. */
+    @Column(name = "stock")
+    private Integer stock;
 
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
     private Instant createdAt;
@@ -94,6 +100,46 @@ public class ProductSku {
 
     public boolean isOrderable() {
         return orderable;
+    }
+
+    public Integer getStock() {
+        return stock;
+    }
+
+    /** null 이면 세지 않는다. 음수는 받지 않는다(요청 검증 · DB CHECK). */
+    public void setStock(Integer stock) {
+        if (stock != null && stock < 0) {
+            throw new IllegalArgumentException("재고는 0 이상");
+        }
+        this.stock = stock;
+    }
+
+    /** 지금 주문할 수 있는가 — 제작할 수 있고, 수량을 센다면 하나라도 남았다. */
+    public boolean isAvailable() {
+        return orderable && (stock == null || stock > 0);
+    }
+
+    /** 이만큼 팔 수 있는가. */
+    public boolean canSupply(int quantity) {
+        return orderable && (stock == null || stock >= quantity);
+    }
+
+    /** 결제 승인 때 줄인다. 세지 않는 사이즈는 그대로. 모자라면 예외 — 부르는 쪽이 먼저 {@link #canSupply} 로 본다. */
+    public void take(int quantity) {
+        if (stock == null) {
+            return;
+        }
+        if (stock < quantity) {
+            throw new IllegalStateException("재고 부족 size=" + size + " stock=" + stock + " want=" + quantity);
+        }
+        stock -= quantity;
+    }
+
+    /** 취소 때 되돌린다. 세지 않는 사이즈는 그대로. */
+    public void putBack(int quantity) {
+        if (stock != null) {
+            stock += quantity;
+        }
     }
 
     public void setOrderable(boolean orderable) {

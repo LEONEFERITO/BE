@@ -58,7 +58,8 @@ public final class AdminProductResponse {
     }
     public record Image(UUID mediaId, String url, String kind, String alt, int sortOrder) {
     }
-    public record Sku(String size, int sortOrder, boolean orderable, List<Measurement> measurements) {
+    /** {@code stock} — 남은 수량(V30). null 이면 세지 않음(주문 후 제작). */
+    public record Sku(String size, int sortOrder, boolean orderable, Integer stock, List<Measurement> measurements) {
     }
     public record Measurement(String part, BigDecimal valueCm, BigDecimal toleranceCm) {
     }

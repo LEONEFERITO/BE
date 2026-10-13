@@ -224,6 +224,9 @@ public class AdminProductService {
             ProductSku sku = new ProductSku(
                     UUID.randomUUID(), r.size(), r.sortOrder() == null ? i : r.sortOrder());
             if (r.orderable() != null) sku.setOrderable(r.orderable());
+            // 재고는 보낸 값 그대로 — 비우면(null) 세지 않는다. 저장은 관리자 화면이 연 순간의 수량으로 덮는다:
+            // 그 사이 팔린 수량이 있으면 다시 열어 확인하면 된다(주문이 드문 동안은 이게 가장 단순하다).
+            sku.setStock(r.stock());
 
             if (r.measurements() != null) {
                 for (var m : r.measurements()) {

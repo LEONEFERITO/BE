@@ -101,10 +101,12 @@ public final class ProductResponse {
     /**
      * 사이즈 한 줄.
      *
-     * <p>{@code orderable} 은 재고가 아니라 <b>제작 가능 여부</b>다. 프론트에서 "품절" 로
-     * 표기하면 안 된다 — 만들 수 없는 사이즈라는 뜻이다.
+     * <p>{@code orderable} 은 재고가 아니라 <b>제작 가능 여부</b>다 — 만들 수 없는 사이즈라는 뜻이다.
+     * {@code soldOut} 은 수량을 세는 사이즈(V30)가 0 이 됐다는 뜻이다 — 화면은 이걸 "품절" 로 쓴다.
+     * {@code remaining} 은 남은 수량이 적을 때(5 이하)만 준다 — "2벌 남음". 많을 때 정확한 수량은 알리지 않는다.
      */
-    public record Sku(String size, boolean orderable, List<Measurement> measurements) {
+    public record Sku(String size, boolean orderable, boolean soldOut, Integer remaining,
+                      List<Measurement> measurements) {
     }
 
     public record Measurement(String part, BigDecimal valueCm, BigDecimal toleranceCm) {
