@@ -20,6 +20,10 @@ import java.util.Set;
  *
  * <p>HEIC(아이폰 기본 사진)는 받되 <b>상품 사진에는 쓰지 않는다</b> — 크롬 · 엣지가 HEIC 를 화면에 그리지 못한다.
  * 교환·반품 사진처럼 "증거로 받아 두는" 곳에서만 받는다 ({@link #EVIDENCE}).
+ *
+ * <p>메인 배너 영상(V29)도 여기서 판별한다 — MP4 · WebM ({@link #VIDEO}). 이름은 ImageFormat 이지만
+ * "올린 바이트가 실제로 무엇인가" 를 가르는 곳이 한 군데여야 해서 같이 둔다. 영상은 영상 업로드 주소로만 받는다.
+ * 아이폰 영상(MOV, QuickTime)은 받지 않는다 — 크롬 · 엣지에서 재생되지 않는 경우가 많다(HEVC).
  */
 public enum ImageFormat {
     PNG("image/png", ".png"),
@@ -28,13 +32,27 @@ public enum ImageFormat {
     GIF("image/gif", ".gif"),
     AVIF("image/avif", ".avif"),
     BMP("image/bmp", ".bmp"),
-    HEIC("image/heic", ".heic");
+    HEIC("image/heic", ".heic"),
+    MP4("video/mp4", ".mp4"),
+    WEBM("video/webm", ".webm");
 
     /** 화면에 그대로 그릴 수 있는 형식 — 상품 사진 · 차트 등 손님에게 보이는 이미지. */
     public static final Set<ImageFormat> WEB = EnumSet.of(PNG, JPEG, WEBP, GIF, AVIF, BMP);
 
     /** 증거로 받아 두는 사진(교환·반품) — 아이폰 HEIC 까지. 화면이 못 그리면 원본 받기로 보인다. */
     public static final Set<ImageFormat> EVIDENCE = EnumSet.of(PNG, JPEG, WEBP, GIF, AVIF, BMP, HEIC);
+
+    /** 메인 배너 영상(V29) — 어느 브라우저에서나 재생되는 형식만. */
+    public static final Set<ImageFormat> VIDEO = EnumSet.of(MP4, WEBM);
+
+    /**
+     * MP4 의 주 브랜드(ftyp). 휴대폰 · 편집 프로그램 · ffmpeg 가 내보내는 값들이다.
+     * QuickTime("qt  ") 은 없다 — 받지 않는다.
+     */
+    private static final Set<String> MP4_BRANDS = Set.of(
+            "isom", "iso2", "iso4", "iso5", "iso6", "mp41", "mp42", "avc1", "M4V ", "mmp4", "dash", "MSNV");
+
+    private static final byte[] EBML_SIG = {0x1A, 0x45, (byte) 0xDF, (byte) 0xA3};
 
     private final String contentType;
     private final String extension;
@@ -91,12 +109,29 @@ public enum ImageFormat {
                 return BMP;
             }
         }
+        // WebM 은 Matroska(EBML) 컨테이너다. 앞머리 EBML 헤더의 DocType 이 "webm" 이어야 한다 — mkv 는 받지 않는다.
+        if (startsWith(head, EBML_SIG) && contains(head, "webm".getBytes(StandardCharsets.US_ASCII))) {
+            return WEBM;
+        }
         return isoMedia(head);
     }
 
+    private static boolean contains(byte[] data, byte[] needle) {
+        outer:
+        for (int i = 0; i + needle.length <= data.length; i++) {
+            for (int j = 0; j < needle.length; j++) {
+                if (data[i + j] != needle[j]) {
+                    continue outer;
+                }
+            }
+            return true;
+        }
+        return false;
+    }
+
     /**
-     * HEIC · AVIF 는 ISO 미디어 상자 구조다: 길이(4) + "ftyp" + 주 브랜드(4) + 버전(4) + 호환 브랜드(4 × n).
-     * 주 브랜드가 mif1 처럼 둘 다 쓰는 값이면 호환 브랜드 목록에서 avif 를 찾아 가른다.
+     * HEIC · AVIF · MP4 는 ISO 미디어 상자 구조다: 길이(4) + "ftyp" + 주 브랜드(4) + 버전(4) + 호환 브랜드(4 × n).
+     * 주 브랜드가 mif1 처럼 둘 다 쓰는 값이면 호환 브랜드 목록에서 avif 를 찾아 가른다. MP4 는 주 브랜드로만 본다.
      */
     private static ImageFormat isoMedia(byte[] head) {
         if (head.length < 16 || !Arrays.equals(head, 4, 8, new byte[] {'f', 't', 'y', 'p'}, 0, 4)) {
@@ -105,6 +140,9 @@ public enum ImageFormat {
         int boxSize = (head[0] & 0xff) << 24 | (head[1] & 0xff) << 16 | (head[2] & 0xff) << 8 | (head[3] & 0xff);
         int end = Math.min(Math.max(boxSize, 16), head.length);
         String major = new String(head, 8, 4, StandardCharsets.US_ASCII);
+        if (MP4_BRANDS.contains(major)) {
+            return MP4;
+        }
         boolean avif = major.equals("avif") || major.equals("avis");
         boolean heic = Set.of("heic", "heix", "hevc", "hevx", "heim", "heis").contains(major);
         if (!avif && !heic && (major.equals("mif1") || major.equals("msf1"))) {

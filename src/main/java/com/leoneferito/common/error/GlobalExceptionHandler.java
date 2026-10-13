@@ -325,9 +325,11 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
 	public ResponseEntity<ErrorResponse> handleUploadTooLarge(org.springframework.web.multipart.MaxUploadSizeExceededException e) {
 		long mb = com.leoneferito.media.MediaService.MAX_BYTES / 1024 / 1024;
+		long videoMb = com.leoneferito.media.MediaService.MAX_VIDEO_BYTES / 1024 / 1024;
 		return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
 				.body(ErrorResponse.of("FILE_TOO_LARGE",
-						"이미지가 너무 큽니다. " + mb + "MB 이하로 올려 주세요.", currentTraceId()));
+						"파일이 너무 큽니다. 이미지는 " + mb + "MB, 영상은 " + videoMb + "MB 이하로 올려 주세요.",
+						currentTraceId()));
 	}
 
 	/** 이미 쓰고 있는 slug. 409 다. slug 는 URL 이라 겹칠 수 없다. */

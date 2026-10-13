@@ -79,6 +79,11 @@ public class MediaAsset {
         return storageKey;
     }
 
+    /** 영상(MP4 · WebM, V29 메인 배너)인가. 이미지 자리에 영상이, 영상 자리에 이미지가 걸리지 않게 가른다. */
+    public boolean isVideo() {
+        return contentType.startsWith("video/");
+    }
+
     public Instant getCreatedAt() {
         return createdAt;
     }

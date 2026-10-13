@@ -60,11 +60,12 @@ spring:
 
   servlet:
     multipart:
-      # 파일 한 장 10MB. MediaService.MAX_BYTES 와 같은 값이어야 한다.
-      # 이쪽은 요청을 다 받기 전에 끊고, 그쪽은 최종 확인이다 — 두 겹으로 둔다.
-      max-file-size: 10MB
-      # 요청 전체. 여러 장을 한 번에 올리는 경우를 위해 조금 더 크게.
-      max-request-size: 12MB
+      # 파일 하나 30MB — 메인 배너 영상(MediaService.MAX_VIDEO_BYTES, V29)과 같은 값이어야 한다.
+      # 이쪽은 요청을 다 받기 전에 끊고, 이미지는 MediaService 가 10MB 로 끊는다 — 두 겹으로 둔다.
+      # 운영에서는 Caddy 가 영상 업로드 주소 말고는 12MB 에서 먼저 끊는다(deploy/Caddyfile).
+      max-file-size: 30MB
+      # 요청 전체. 파일 하나에 폼 경계 · 이름이 붙는 만큼 조금 더 크게.
+      max-request-size: 32MB
 
 app:
   media:

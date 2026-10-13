@@ -55,18 +55,24 @@ public class MediaController {
      */
     @PostMapping("/api/admin/media")
     public UploadResponse upload(@RequestParam("file") MultipartFile file) throws IOException {
-        MediaAsset asset = mediaService.upload(file);
-        return new UploadResponse(
-                asset.getId(),
-                urls.urlFor(asset),
-                asset.getOriginalFilename(),
-                asset.getByteSize(),
-                asset.getWidth(),
-                asset.getHeight());
+        return UploadResponse.of(mediaService.upload(file), urls);
+    }
+
+    /**
+     * 영상 업로드 (V29 메인 배너). 관리자 전용 — MP4 · WebM, 30MB 까지. 응답 모양은 이미지와 같다(가로 · 세로는 null).
+     * 주소가 따로인 이유: 운영의 앞단(Caddy)이 이 주소만 큰 요청을 받는다. 다른 업로드는 12MB 에서 끊긴다.
+     */
+    @PostMapping("/api/admin/media/video")
+    public UploadResponse uploadVideo(@RequestParam("file") MultipartFile file) throws IOException {
+        return UploadResponse.of(mediaService.uploadVideo(file), urls);
     }
 
     public record UploadResponse(
             UUID id, String url, String filename, long byteSize, Integer width, Integer height) {
+        static UploadResponse of(MediaAsset asset, MediaUrls urls) {
+            return new UploadResponse(asset.getId(), urls.urlFor(asset), asset.getOriginalFilename(),
+                    asset.getByteSize(), asset.getWidth(), asset.getHeight());
+        }
     }
 
     /**

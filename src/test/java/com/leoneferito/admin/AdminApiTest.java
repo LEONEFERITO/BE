@@ -86,6 +86,31 @@ class AdminApiTest {
 
     /** 진짜 PNG 바이트. 매직바이트 판별을 실제로 통과해야 한다. */
     /** 아이폰 HEIC 앞머리 — ftyp 상자(heic, 호환 mif1 · heic) + 나머지. 형식 판별만 보는 테스트용이다. */
+    /** ftyp 상자로 시작하는 ISO 미디어 앞머리 + 채움. 주 브랜드만 바꿔 MP4 · MOV 를 흉내 낸다. */
+    static byte[] isoMedia(String major, int size) {
+        byte[] head = {0, 0, 0, 0x20, 'f', 't', 'y', 'p', 0, 0, 0, 0, 0, 0, 2, 0,
+                'i', 's', 'o', 'm', 'i', 's', 'o', '2', 'a', 'v', 'c', '1', 'm', 'p', '4', '1'};
+        byte[] brand = major.getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        System.arraycopy(brand, 0, head, 8, 4);
+        byte[] all = new byte[size];
+        System.arraycopy(head, 0, all, 0, head.length);
+        for (int i = head.length; i < size; i++) {
+            all[i] = (byte) i;
+        }
+        return all;
+    }
+
+    /** EBML 헤더(DocType webm 또는 matroska) + 채움 */
+    static byte[] ebml(String docType) {
+        byte[] doc = docType.getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        var out = new java.io.ByteArrayOutputStream();
+        out.writeBytes(new byte[] {0x1A, 0x45, (byte) 0xDF, (byte) 0xA3, (byte) 0x9F, 0x42, (byte) 0x86, (byte) 0x81, 0x01,
+                0x42, (byte) 0xF7, (byte) 0x81, 0x01, 0x42, (byte) 0x82, (byte) (0x80 | doc.length)});
+        out.writeBytes(doc);
+        out.writeBytes(new byte[300]);
+        return out.toByteArray();
+    }
+
     static byte[] heic() {
         byte[] head = {0, 0, 0, 0x18, 'f', 't', 'y', 'p', 'h', 'e', 'i', 'c', 0, 0, 0, 0,
                 'm', 'i', 'f', '1', 'h', 'e', 'i', 'c'};
@@ -231,6 +256,72 @@ class AdminApiTest {
                             .file(new MockMultipartFile("file", "a.png", "image/png", new byte[0]))))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.code").value("INVALID_IMAGE"));
+        }
+
+        @Test
+        @DisplayName("영상은 영상 주소로만 — MP4 · WebM 은 받고, MOV · mkv · 위장 파일은 거부, 이미지 주소로는 안 된다")
+        void videoUpload() throws Exception {
+            mockMvc.perform(asAdmin(multipart("/api/admin/media/video")
+                            .file(new MockMultipartFile("file", "season.mp4", "video/mp4", isoMedia("isom", 4096)))))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.url").value(org.hamcrest.Matchers.endsWith(".mp4")))
+                    .andExpect(jsonPath("$.width").doesNotExist());
+            mockMvc.perform(asAdmin(multipart("/api/admin/media/video")
+                            .file(new MockMultipartFile("file", "phone.mp4", "video/mp4", isoMedia("mp42", 512)))))
+                    .andExpect(status().isOk());
+            mockMvc.perform(asAdmin(multipart("/api/admin/media/video")
+                            .file(new MockMultipartFile("file", "loop.webm", "video/webm", ebml("webm")))))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.url").value(org.hamcrest.Matchers.endsWith(".webm")));
+
+            // 아이폰 MOV · mkv · 사진 · 위장 HTML — 영상 주소에서 거부
+            for (MockMultipartFile bad : new MockMultipartFile[] {
+                    new MockMultipartFile("file", "IMG_0001.MOV", "video/quicktime", isoMedia("qt  ", 512)),
+                    new MockMultipartFile("file", "a.mkv", "video/x-matroska", ebml("matroska")),
+                    new MockMultipartFile("file", "a.png", "image/png", realPng(10, 10)),
+                    new MockMultipartFile("file", "evil.mp4", "video/mp4", "<html><script>alert(1)</script>".getBytes()),
+                    new MockMultipartFile("file", "empty.mp4", "video/mp4", new byte[0])}) {
+                mockMvc.perform(asAdmin(multipart("/api/admin/media/video").file(bad)))
+                        .andExpect(status().isBadRequest())
+                        .andExpect(jsonPath("$.code").value("INVALID_IMAGE"));
+            }
+            // 영상은 이미지 주소로 올릴 수 없다 — 상품 사진 자리에 영상이 걸리지 않게
+            mockMvc.perform(asAdmin(multipart("/api/admin/media")
+                            .file(new MockMultipartFile("file", "season.mp4", "video/mp4", isoMedia("isom", 512)))))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @DisplayName("일반 회원은 영상을 올릴 수 없다")
+        void memberCannotUploadVideo() throws Exception {
+            mockMvc.perform(asMember(multipart("/api/admin/media/video")
+                            .file(new MockMultipartFile("file", "a.mp4", "video/mp4", isoMedia("isom", 512)))))
+                    .andExpect(status().isForbidden());
+        }
+
+        @Test
+        @DisplayName("영상은 나눠 받을 수 있다(Range) — 사파리 · 아이폰은 이게 안 되면 재생하지 않는다")
+        void videoServedInRanges() throws Exception {
+            byte[] bytes = isoMedia("isom", 4096);
+            String url = com.jayway.jsonpath.JsonPath.read(mockMvc.perform(asAdmin(multipart("/api/admin/media/video")
+                                    .file(new MockMultipartFile("file", "season.mp4", "video/mp4", bytes))))
+                            .andExpect(status().isOk())
+                            .andReturn().getResponse().getContentAsString(), "$.url");
+
+            mockMvc.perform(get(url))
+                    .andExpect(status().isOk())
+                    .andExpect(content().contentType("video/mp4"))
+                    .andExpect(header().string("Accept-Ranges", "bytes"))
+                    .andExpect(header().string("X-Content-Type-Options", "nosniff"))
+                    .andExpect(content().bytes(bytes));
+
+            MvcResult part = mockMvc.perform(get(url).header("Range", "bytes=100-199"))
+                    .andExpect(status().isPartialContent())
+                    .andExpect(header().string("Content-Range", "bytes 100-199/4096"))
+                    .andExpect(header().string("Content-Length", "100"))
+                    .andReturn();
+            org.assertj.core.api.Assertions.assertThat(part.getResponse().getContentAsByteArray())
+                    .isEqualTo(java.util.Arrays.copyOfRange(bytes, 100, 200));
         }
 
         @Test

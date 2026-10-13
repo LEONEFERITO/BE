@@ -33,11 +33,17 @@ public class MediaService {
     /**
      * 한 장의 최대 크기.
      *
-     * <p>서블릿 단(spring.servlet.multipart.max-file-size)에서도 같은 값으로 막는다.
-     * 그쪽은 <b>디스크에 다 받기 전에</b> 끊고, 여기는 최종 확인이다.
-     * 한 겹만 두면 설정이 바뀌는 날 다른 한쪽이 조용히 열린다.
+     * <p>서블릿 단(spring.servlet.multipart.max-file-size)은 영상 상한({@link #MAX_VIDEO_BYTES})에 맞춰 두었다 —
+     * 그쪽은 <b>디스크에 다 받기 전에</b> 끊고, 이미지는 여기서 10MB 로 끊는다.
+     * 운영에서는 앞단 Caddy 가 영상 주소 말고는 12MB 에서 먼저 끊는다(deploy/Caddyfile).
      */
     public static final long MAX_BYTES = 10L * 1024 * 1024;
+
+    /**
+     * 영상 한 개의 최대 크기 (V29 메인 배너). 서블릿 단(max-file-size)과 같은 값이다.
+     * 메인 첫 화면에서 손님마다 내려받는 파일이라 크면 첫 화면이 늦다 — 관리자 화면은 10MB 안팎을 권한다.
+     */
+    public static final long MAX_VIDEO_BYTES = 30L * 1024 * 1024;
 
     /**
      * 픽셀 수 상한.
@@ -105,6 +111,40 @@ public class MediaService {
                 key));
 
         log.info("이미지 업로드 mediaId={} format={} bytes={}", asset.getId(), format, bytes.length);
+        return asset;
+    }
+
+    /**
+     * 메인 배너 영상 (V29) — MP4 · WebM 만. 이미지처럼 앞머리 바이트로 판별하고, 모르면 거부한다.
+     *
+     * <p>이미지와 달리 통째로 메모리에 올리지 않는다(최대 30MB) — 앞머리만 읽어 판별하고, 저장은 스트림으로.
+     * 크기(가로 · 세로)는 재지 않는다. 영상을 풀어 볼 이유가 없고, 화면은 object-fit 으로 채운다.
+     */
+    @Transactional
+    public MediaAsset uploadVideo(MultipartFile file) throws IOException {
+        if (file == null || file.isEmpty()) {
+            throw new InvalidImageException("영상 파일을 선택해 주세요.");
+        }
+        if (file.getSize() > MAX_VIDEO_BYTES) {
+            throw new InvalidImageException(
+                    "영상이 너무 큽니다. " + (MAX_VIDEO_BYTES / 1024 / 1024) + "MB 이하로 올려 주세요.");
+        }
+        byte[] head;
+        try (InputStream in = file.getInputStream()) {
+            head = in.readNBytes(ImageFormat.HEADER_BYTES);
+        }
+        ImageFormat format = ImageFormat.sniff(head);
+        if (format == null || !ImageFormat.VIDEO.contains(format)) {
+            log.info("받지 않는 영상 형식 업로드 거부 format={} size={}", format, file.getSize());
+            throw new InvalidImageException("MP4 · WebM 영상만 올릴 수 있습니다. 아이폰 영상(MOV)은 MP4 로 바꿔 올려 주세요.");
+        }
+        String key;
+        try (InputStream in = file.getInputStream()) {
+            key = storage.store(in, format);
+        }
+        MediaAsset asset = assets.save(new MediaAsset(
+                UUID.randomUUID(), safeDisplayName(file.getOriginalFilename()), format, file.getSize(), null, null, key));
+        log.info("영상 업로드 mediaId={} format={} bytes={}", asset.getId(), format, file.getSize());
         return asset;
     }
 

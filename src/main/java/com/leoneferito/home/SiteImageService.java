@@ -2,6 +2,7 @@ package com.leoneferito.home;
 
 import com.leoneferito.common.error.ResourceNotFoundException;
 import com.leoneferito.common.error.StaleListException;
+import com.leoneferito.media.InvalidImageException;
 import com.leoneferito.media.MediaAsset;
 import com.leoneferito.media.MediaAssetRepository;
 import com.leoneferito.product.FrontRebuildTrigger;
@@ -154,7 +155,8 @@ public class SiteImageService {
 
     /**
      * 화면이 보낸 값을 배너에 넣는다. 상품 배너는 <b>공개 상품</b>만 — 없거나 비공개면 404.
-     * 사진 id 가 없는 이미지를 가리켜도 404. 어느 쪽이든 아무것도 바뀌지 않는다.
+     * 사진 id 가 없는 이미지를 가리켜도 404. 영상 배너의 영상 자리에 사진이, 다른 자리에 영상이 오면 400.
+     * 어느 쪽이든 아무것도 바뀌지 않는다.
      */
     private void apply(HeroBanner banner, BannerChange c) {
         Product product = null;
@@ -164,21 +166,30 @@ public class SiteImageService {
                     .orElseThrow(() -> new ResourceNotFoundException("공개 상품 없음: id=" + c.productId()));
         }
         boolean custom = c.kind() == HeroBanner.Kind.CUSTOM;
-        boolean image = c.kind() == HeroBanner.Kind.IMAGE;
+        boolean video = c.kind() == HeroBanner.Kind.VIDEO;
+        boolean full = c.kind() == HeroBanner.Kind.IMAGE || video;
         banner.change(c.kind(), product, c.text(),
-                custom || image ? photo(c.figure()) : EMPTY_PHOTO,
-                custom ? photo(c.frameLeft()) : EMPTY_PHOTO,
-                custom ? photo(c.frameRight()) : EMPTY_PHOTO,
-                image ? photo(c.mobile()) : EMPTY_PHOTO,
+                custom || full ? photo(c.figure(), video) : EMPTY_PHOTO,
+                custom ? photo(c.frameLeft(), false) : EMPTY_PHOTO,
+                custom ? photo(c.frameRight(), false) : EMPTY_PHOTO,
+                full ? photo(c.mobile(), video) : EMPTY_PHOTO,
+                video ? photo(c.poster(), false).media() : null,
+                video ? photo(c.mobilePoster(), false).media() : null,
                 c.visible());
     }
 
-    private HeroBanner.Photo photo(PhotoRef ref) {
+    /** 사진(또는 영상) 한 장. {@code video} — 이 자리에 영상이 와야 하는가. 반대 것이 오면 400. */
+    private HeroBanner.Photo photo(PhotoRef ref, boolean video) {
         if (ref == null || ref.mediaId() == null) {
             return EMPTY_PHOTO;
         }
         MediaAsset media = mediaAssets.findById(ref.mediaId())
                 .orElseThrow(() -> new ResourceNotFoundException("이미지 없음: mediaId=" + ref.mediaId()));
+        if (media.isVideo() != video) {
+            throw new InvalidImageException(video
+                    ? "영상 배너에는 영상 파일(MP4 · WebM)을 올려 주세요."
+                    : "영상은 「영상으로 등록」 배너의 영상 칸에만 쓸 수 있습니다.");
+        }
         return new HeroBanner.Photo(media, ref.alt());
     }
 
@@ -192,7 +203,8 @@ public class SiteImageService {
             b.getProduct().getSlug();
             b.getProduct().getStatus();
         }
-        for (MediaAsset m : new MediaAsset[] {b.getFigure(), b.getFrameLeft(), b.getFrameRight(), b.getMobile()}) {
+        for (MediaAsset m : new MediaAsset[] {b.getFigure(), b.getFrameLeft(), b.getFrameRight(), b.getMobile(),
+                b.getPoster(), b.getMobilePoster()}) {
             if (m != null) {
                 m.getStorageKey();
             }
@@ -201,12 +213,13 @@ public class SiteImageService {
     }
 
     /**
-     * 배너 한 개의 저장 값. 상품은 상품 배너일 때만, 주 사진(figure)은 직접 올리기 · 이미지 한 장일 때만,
-     * 액자는 직접 올리기일 때만, 휴대폰 사진(mobile)은 이미지 한 장일 때만 쓴다.
+     * 배너 한 개의 저장 값. 상품은 상품 배너일 때만, 주 사진(figure)은 직접 올리기 · 이미지 한 장 · 영상일 때만,
+     * 액자는 직접 올리기일 때만, 휴대폰 사진(mobile)은 이미지 한 장 · 영상일 때만, 첫 장면 사진(poster)은 영상일 때만 쓴다.
+     * 영상 배너는 figure · mobile 이 영상이다.
      */
     public record BannerChange(HeroBanner.Kind kind, UUID productId, HeroBanner.Text text,
                                PhotoRef figure, PhotoRef frameLeft, PhotoRef frameRight, PhotoRef mobile,
-                               boolean visible) {
+                               PhotoRef poster, PhotoRef mobilePoster, boolean visible) {
     }
 
     /** 사진 한 장 — 올린 이미지 id 와 설명. id 가 없으면 빈 칸. */

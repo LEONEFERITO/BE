@@ -67,9 +67,14 @@
 {$API_DOMAIN} {
 	encode zstd gzip
 
-	# 업로드 상한과 맞춘다 (spring.servlet.multipart.max-request-size = 12MB).
-	# 프록시가 먼저 끊어야 12MB 넘는 요청이 API 까지 오지 않는다.
-	request_body {
+	# 업로드 상한과 맞춘다 — 프록시가 먼저 끊어야 큰 요청이 API 까지 오지 않는다.
+	# 메인 배너 영상 업로드(관리자, V29)만 32MB(spring max-request-size), 나머지(이미지 · 반품 사진 · 모든 요청)는 12MB.
+	@videoUpload path /api/admin/media/video
+	request_body @videoUpload {
+		max_size 32MB
+	}
+	@otherRequests not path /api/admin/media/video
+	request_body @otherRequests {
 		max_size 12MB
 	}
 

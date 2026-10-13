@@ -391,6 +391,69 @@ class SiteImageApiTest {
                 .andExpect(jsonPath("$.frameLeft.alt").value("남으면 안 됨"));
     }
 
+    private MediaAsset video(String name) {
+        return mediaAssets.save(new MediaAsset(UUID.randomUUID(), name + ".mp4", ImageFormat.MP4,
+                4_000_000L, null, null, "test/" + UUID.randomUUID() + ".mp4"));
+    }
+
+    @Test
+    @DisplayName("영상 — 영상 칸에는 영상만, 첫 장면 칸에는 사진만. 다른 종류로 바꾸면 첫 장면 사진은 걷힌다")
+    void videoBanner() throws Exception {
+        String pc = video("pc").getId().toString();
+        String phone = video("phone").getId().toString();
+        String still = image("still").getId().toString();
+        String stillPhone = image("still-phone").getId().toString();
+        String body = """
+                {"kind":"VIDEO","productId":null,"eyebrow":"26FW","title":"가을 필름","subtitle":"","ctaLabel":"",
+                 "ctaUrl":"/products/","figure":{"mediaId":"%s","alt":" 가을 필름 — 네이비 수트 "},
+                 "frameLeft":null,"frameRight":null,"mobile":{"mediaId":"%s","alt":""},
+                 "poster":{"mediaId":"%s","alt":""},"mobilePoster":{"mediaId":"%s","alt":""},"visible":true}
+                """.formatted(pc, phone, still, stillPhone);
+        String id = create(body);
+        mockMvc.perform(get("/api/hero-banners"))
+                .andExpect(jsonPath("$[0].kind").value("VIDEO"))
+                .andExpect(jsonPath("$[0].figure.url").value(org.hamcrest.Matchers.endsWith(".mp4")))
+                .andExpect(jsonPath("$[0].figure.alt").value("가을 필름 — 네이비 수트"))
+                .andExpect(jsonPath("$[0].mobile.url").value(org.hamcrest.Matchers.endsWith(".mp4")))
+                .andExpect(jsonPath("$[0].poster.url").value(org.hamcrest.Matchers.endsWith(".webp")))
+                .andExpect(jsonPath("$[0].mobilePoster.url").isNotEmpty());
+
+        // 첫 장면 사진 없이도 된다(선택)
+        mockMvc.perform(csrf(mockMvc, put(BANNERS + "/" + id), admin).contentType(MediaType.APPLICATION_JSON)
+                        .content(body.replace("\"poster\":{\"mediaId\":\"" + still + "\",\"alt\":\"\"}", "\"poster\":null")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.poster").doesNotExist())
+                .andExpect(jsonPath("$.shown").value(true));
+
+        // 영상 칸에 사진 → 400, 첫 장면 칸에 영상 → 400
+        mockMvc.perform(csrf(mockMvc, post(BANNERS), admin).contentType(MediaType.APPLICATION_JSON)
+                        .content(body.replace("\"figure\":{\"mediaId\":\"" + pc, "\"figure\":{\"mediaId\":\"" + still)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_IMAGE"));
+        mockMvc.perform(csrf(mockMvc, post(BANNERS), admin).contentType(MediaType.APPLICATION_JSON)
+                        .content(body.replace(still, phone)))
+                .andExpect(status().isBadRequest());
+        // 이미지 한 장 · 직접 등록에 영상 → 400 (사진 자리에 영상이 걸리지 않게)
+        mockMvc.perform(csrf(mockMvc, put(BANNERS + "/" + id), admin).contentType(MediaType.APPLICATION_JSON)
+                        .content(body.replace("\"kind\":\"VIDEO\"", "\"kind\":\"IMAGE\"")))
+                .andExpect(status().isBadRequest());
+        // 영상 없이 → 400
+        mockMvc.perform(csrf(mockMvc, post(BANNERS), admin).contentType(MediaType.APPLICATION_JSON)
+                        .content(body.replace("\"figure\":{\"mediaId\":\"" + pc + "\",\"alt\":\" 가을 필름 — 네이비 수트 \"}",
+                                "\"figure\":null")))
+                .andExpect(status().isBadRequest());
+
+        // 이미지 한 장으로 바꾸면(사진으로 갈아 끼워서) 첫 장면 사진은 남지 않는다
+        String asImage = body.replace("\"kind\":\"VIDEO\"", "\"kind\":\"IMAGE\"")
+                .replace(pc, still).replace(phone, stillPhone);
+        mockMvc.perform(csrf(mockMvc, put(BANNERS + "/" + id), admin).contentType(MediaType.APPLICATION_JSON)
+                        .content(asImage))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.kind").value("IMAGE"))
+                .andExpect(jsonPath("$.poster").doesNotExist())
+                .andExpect(jsonPath("$.mobilePoster").doesNotExist());
+    }
+
     @Test
     @DisplayName("손님은 배너를 만들 수도, 관리자 목록을 볼 수도 없다")
     void memberCannotChangeBanners() throws Exception {
