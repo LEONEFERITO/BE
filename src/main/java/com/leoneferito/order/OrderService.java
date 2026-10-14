@@ -19,7 +19,6 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalLong;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -118,8 +117,8 @@ public class OrderService {
         if (!gateway.isReady()) {
             throw new PaymentException("NOT_CONFIGURED", "결제 준비 중입니다.");
         }
-        Priced priced = price(memberId, cartItemIds);
-        ShopOrder order = ShopOrder.open(memberId, newOrderNumber(), priced.items(), priced.shippingFeeKrw(),
+        Priced priced = price(memberId, cartItemIds, recipient.zipCode());
+        ShopOrder order = ShopOrder.open(memberId, newOrderNumber(), priced.items(), priced.fee().totalKrw(),
                 recipient, Instant.now());
         orders.save(order);
         log.info("주문서 작성 orderNumber={} total={}", order.getOrderNumber(), order.getTotalAmountKrw());
@@ -129,22 +128,29 @@ public class OrderService {
     /**
      * 주문서 화면의 금액 — 고른 줄만으로 계산한다(바로 구매는 한 줄). 주문서 작성과 <b>같은 계산</b>을 쓴다.
      * 화면이 합계를 따로 더하면 결제 금액과 어긋나는 날이 온다.
+     * 우편번호를 주면 제주 · 도서산간 추가 배송비까지 — 주소를 넣기 전에는 기본 배송비만이다.
      */
     @Transactional(readOnly = true)
-    public Quote quote(UUID memberId, List<UUID> cartItemIds) {
-        Priced p = price(memberId, cartItemIds);
+    public Quote quote(UUID memberId, List<UUID> cartItemIds, String zipCode) {
+        Priced p = price(memberId, cartItemIds, zipCode);
         long items = p.items().stream().mapToLong(OrderItem::getLineAmountKrw).sum();
-        return new Quote(items, p.shippingFeeKrw(), items + p.shippingFeeKrw(),
-                p.items().stream().mapToInt(OrderItem::getLeadTimeDays).max().orElse(0));
+        return new Quote(items, p.fee().totalKrw(), items + p.fee().totalKrw(),
+                p.items().stream().mapToInt(OrderItem::getLeadTimeDays).max().orElse(0),
+                p.fee().baseKrw(), p.fee().extraKrw(), p.fee().extraLabel(), shipping.getFreeThresholdKrw());
     }
 
-    public record Quote(long itemsAmountKrw, long shippingFeeKrw, long totalAmountKrw, int longestLeadTimeDays) {
+    /**
+     * shippingFeeKrw = 기본(shippingBaseKrw) + 제주 · 도서산간(remoteExtraKrw). remoteAreaLabel 은 추가가 붙을 때만(예: 제주).
+     * freeShippingThresholdKrw — 이 금액 이상이면 기본 배송비 0원(없으면 null).
+     */
+    public record Quote(long itemsAmountKrw, long shippingFeeKrw, long totalAmountKrw, int longestLeadTimeDays,
+                        long shippingBaseKrw, long remoteExtraKrw, String remoteAreaLabel, Long freeShippingThresholdKrw) {
     }
 
-    private record Priced(List<OrderItem> items, long shippingFeeKrw) {
+    private record Priced(List<OrderItem> items, ShippingPolicy.Fee fee) {
     }
 
-    private Priced price(UUID memberId, List<UUID> cartItemIds) {
+    private Priced price(UUID memberId, List<UUID> cartItemIds, String zipCode) {
         if (cartItemIds == null || cartItemIds.isEmpty()) {
             throw new CartException("주문할 상품을 골라 주세요.");
         }
@@ -174,11 +180,8 @@ public class OrderService {
         }
 
         long itemsAmount = items.stream().mapToLong(OrderItem::getLineAmountKrw).sum();
-        OptionalLong fee = shipping.feeFor(itemsAmount);
-        if (fee.isEmpty()) {
-            throw new ShippingPolicyPendingException();
-        }
-        return new Priced(items, fee.getAsLong());
+        ShippingPolicy.Fee fee = shipping.feeFor(itemsAmount, zipCode).orElseThrow(ShippingPolicyPendingException::new);
+        return new Priced(items, fee);
     }
 
     /**

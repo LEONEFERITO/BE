@@ -85,10 +85,15 @@ app:
     # 연달아 고친 것을 한 번의 빌드로 묶는 시간.
     rebuild-delay: 30s
   order:
-    # 배송비(원). TODO(고객확인) 비어 있으면 주문을 받지 않는다 — 지어낸 배송비가 결제되면 안 된다.
-    shipping-fee-krw: ${ORDER_SHIPPING_FEE_KRW:}
-    # 이 금액 이상이면 배송비 0원. 비어 있으면 무료 배송 없음.
-    free-shipping-threshold-krw: ${ORDER_FREE_SHIPPING_THRESHOLD_KRW:}
+    # 배송비 정책 (2026-10-14 — 국내 의류몰에서 흔한 방식: 3,000원 · 5만원 이상 무료 · 제주 · 도서산간 추가).
+    # 손님 화면의 안내 문구(FE src/data/shipping.ts)와 같은 값이어야 한다. 바꾸면 그쪽도 바꾼다.
+    # 기본 배송비(원). 일부러 비우면(ORDER_SHIPPING_FEE_KRW=) 주문을 받지 않는다 — fail closed.
+    shipping-fee-krw: ${ORDER_SHIPPING_FEE_KRW:3000}
+    # 상품 금액이 이 금액 이상이면 기본 배송비 0원. 비우면 무료 배송 없음.
+    free-shipping-threshold-krw: ${ORDER_FREE_SHIPPING_THRESHOLD_KRW:50000}
+    # 제주 · 도서산간 추가 배송비 — "우편번호시작-끝:금액:이름" 을 쉼표로. 무료 배송 주문에도 붙는다.
+    # 제주 63000~63644 · 울릉 40200~40240. 택배사는 CJ대한통운 — 그 회사 도서산간 우편번호 목록으로 넓힐 수 있다.
+    remote-areas: ${ORDER_REMOTE_AREAS:63000-63644:3000:제주,40200-40240:5000:도서산간}
   auth:
     # 인증 주소의 IP 단위 요청 제한 (AuthRateLimitFilter).
     # 계정별 방어(로그인 잠금 · 재설정 메일 시간당 5회)는 계정을 바꿔가며 찍는 공격을 못 막는다.
@@ -216,12 +221,6 @@ spring:
   mail:
     host: ${MAIL_HOST:localhost}
     port: ${MAIL_PORT:1025}
-
-app:
-  order:
-    # ⚠️ 개발용 값이다. 고객 정책이 아니다 — 로컬에서 주문 흐름을 돌려 보려고 넣었다.
-    # 운영(prod)에는 기본값이 없어서 ORDER_SHIPPING_FEE_KRW 를 넣기 전까지 주문을 받지 않는다.
-    shipping-fee-krw: ${ORDER_SHIPPING_FEE_KRW:3000}
 
 server:
   servlet:

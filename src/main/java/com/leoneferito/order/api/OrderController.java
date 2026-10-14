@@ -49,13 +49,17 @@ public class OrderController {
                 "clientKey", orders.paymentClientKey());
     }
 
-    /** 주문서 화면의 금액. 고른 장바구니 줄로 서버가 계산한다 (주문서 작성과 같은 계산). */
+    /**
+     * 주문서 화면의 금액. 고른 장바구니 줄로 서버가 계산한다 (주문서 작성과 같은 계산).
+     * zipCode 는 선택 — 주소를 넣으면 화면이 다시 불러 제주 · 도서산간 추가 배송비를 보여 준다.
+     */
     @PostMapping("/quote")
     public OrderService.Quote quote(@AuthenticationPrincipal MemberPrincipal me, @Valid @RequestBody QuoteRequest request) {
-        return orders.quote(me.getId(), request.cartItemIds());
+        return orders.quote(me.getId(), request.cartItemIds(), request.zipCode());
     }
 
-    public record QuoteRequest(@NotEmpty @Size(max = 50) List<UUID> cartItemIds) {
+    public record QuoteRequest(@NotEmpty @Size(max = 50) List<UUID> cartItemIds,
+                               @Pattern(regexp = "^[0-9]{5}$", message = "우편번호는 숫자 5자리입니다.") String zipCode) {
     }
 
     @PostMapping

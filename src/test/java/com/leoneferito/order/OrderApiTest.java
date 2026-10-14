@@ -341,6 +341,27 @@ class OrderApiTest {
         }
 
         @Test
+        @DisplayName("제주 주소면 추가 배송비가 붙는다 — 주문서 금액(quote)과 실제 주문 금액이 같고, 우편번호 없는 quote 는 기본만")
+        void jejuExtraShipping() throws Exception {
+            String trousers = addToCart("ot-trousers", "30", 1);
+            send(buyer, post("/api/orders/quote"), "{\"cartItemIds\":[\"" + trousers + "\"]}")
+                    .andExpect(jsonPath("$.remoteExtraKrw").value(0))
+                    .andExpect(jsonPath("$.shippingFeeKrw").value(3_000));
+            send(buyer, post("/api/orders/quote"), "{\"cartItemIds\":[\"" + trousers + "\"],\"zipCode\":\"63100\"}")
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.shippingBaseKrw").value(3_000))
+                    .andExpect(jsonPath("$.remoteExtraKrw").value(3_000))
+                    .andExpect(jsonPath("$.remoteAreaLabel").value("제주"))
+                    .andExpect(jsonPath("$.shippingFeeKrw").value(6_000))
+                    .andExpect(jsonPath("$.totalAmountKrw").value(186_000));
+            String res = send(buyer, post("/api/orders"), orderBody(trousers).replace("16677", "63100"))
+                    .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+            assertThat(((Number) JsonPath.read(res, "$.amount")).longValue()).isEqualTo(186_000L);
+            send(buyer, post("/api/orders/quote"), "{\"cartItemIds\":[\"" + trousers + "\"],\"zipCode\":\"6310\"}")
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test
         @DisplayName("결제 전 확인(agree) 없이는 주문서를 만들 수 없다")
         void agreeRequired() throws Exception {
             String id = addToCart("ot-shirt", "100", 1);
