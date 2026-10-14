@@ -115,6 +115,14 @@ async function build(reason) {
     syncSource();
     await installIfNeeded();
     fs.rmSync(path.join(WORK, "out"), { recursive: true, force: true });
+    /*
+     * 지난 빌드가 받아 둔 API 응답을 지운다 (2026-10-14 "WHY 구간을 고쳤는데 사이트에 안 나온다").
+     * Next 는 빌드 때 부른 fetch 응답을 .next/cache/fetch-cache 에 1년짜리(revalidate 31536000)로 저장하고,
+     * .next 를 남겨 두는 이 빌더에서는 다음 빌드가 API 를 다시 부르지 않고 그 응답을 쓴다 — 관리자가 고친 WHY · 배너 ·
+     * 사진 · 상품 내용이 처음 받은 그대로 굳는다. 빌드는 "지금 서버의 내용" 을 담으려고 도는 것이니 매번 새로 받는다.
+     * 나머지 .next(컴파일 캐시)는 남겨 빌드 속도는 그대로다.
+     */
+    fs.rmSync(path.join(WORK, ".next", "cache", "fetch-cache"), { recursive: true, force: true });
     await run("npx", ["next", "build"], {
       cwd: WORK,
       env: {
