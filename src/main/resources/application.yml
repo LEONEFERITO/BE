@@ -133,6 +133,10 @@ app:
   mail:
     # 보내는 사람. SMTP 서버가 이 주소로 보낼 권한이 있어야 한다(SPF/DKIM). TODO(고객확인) 발신 주소
     from: ${MAIL_FROM:LEONE FERITO <no-reply@leoneferito.kr>}
+  notify:
+    # 새 주문 · 손님 취소 · 교환·반품 신청을 받을 관리자 메일(쉼표로 여럿). 비우면 관리자 메일은 보내지 않는다(OrderNotifier).
+    # 손님 메일(주문 완료 · 발송 · 취소 · 신청 접수)은 회원 이메일로 따로 나간다.
+    admin-emails: ${ORDER_NOTIFY_EMAILS:}
   social:
     # 간편가입 제공자. client-id 가 비어 있으면 그 제공자는 꺼진다 —
     # 버튼이 안 나오고, 시작 주소로 들어와도 401 이다. 키 없이도 사이트는 뜬다.

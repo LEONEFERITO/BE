@@ -13,6 +13,7 @@ import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,9 +34,11 @@ public class ReturnService {
     private final ProductRepository products;
     private final ReturnPolicy policy;
     private final ReturnPhotoService photos;
+    private final ApplicationEventPublisher events;
 
     public ReturnService(ShopOrderRepository orders, ReturnRequestRepository returns, ProductRepository products,
-                         ReturnPolicy policy, ReturnPhotoService photos) {
+                         ReturnPolicy policy, ReturnPhotoService photos, ApplicationEventPublisher events) {
+        this.events = events;
         this.orders = orders;
         this.returns = returns;
         this.products = products;
@@ -108,6 +111,8 @@ public class ReturnService {
         photos.attach(memberId, photoIds, created);
         log.info("교환·반품 신청 orderNumber={} returnId={} type={} reason={}",
                 orderNumber, created.getId(), type, reason);
+        // 손님에게 접수 확인, 관리자에게 새 신청 메일 (OrderNotifier)
+        events.publishEvent(new OrderNotifier.Notice(OrderNotifier.Kind.RETURN_REQUESTED, orderNumber, created.getId()));
         return loaded(created);
     }
 

@@ -140,6 +140,7 @@ class NicePayApiTest {
         registry.add("app.front.base-url", () -> FRONT);
         registry.add("app.order.shipping-fee-krw", () -> "3000");
         registry.add("app.order.free-shipping-threshold-krw", () -> "500000");
+        registry.add("app.notify.admin-emails", () -> "ops@leoneferito.test, owner@leoneferito.test");
     }
 
     // ── 준비 ────────────────────────────────────────────────────
@@ -429,6 +430,52 @@ class NicePayApiTest {
                 .andExpect(jsonPath("$.skus[0].soldOut").value(false))
                 .andExpect(jsonPath("$.skus[0].remaining").doesNotExist());
         assertThat(o).isNotNull();
+    }
+
+    @Autowired
+    private com.leoneferito.TestMailConfiguration.RecordingMailer mailer;
+
+    private List<com.leoneferito.TestMailConfiguration.SentMail> mailsTo(String to) {
+        return mailer.sent().stream().filter(m -> m.to().equals(to)).toList();
+    }
+
+    @Test
+    @DisplayName("주문 알림 — 결제되면 손님에게 주문 내역, 관리자들에게 새 주문. 손님이 취소하면 손님에게 환불 안내, 관리자에게 취소 알림")
+    void orderMails() throws Exception {
+        mailer.clear();
+        Object[] o = order();
+        assertThat(mailer.sent()).isEmpty(); // 주문서만으로는 아무것도 안 나간다
+        returned((String) o[0], "tid_mail", (long) o[1]).andExpect(status().isSeeOther());
+
+        var toBuyer = mailsTo("buyer@example.com");
+        assertThat(toBuyer).hasSize(1);
+        assertThat(toBuyer.getFirst().subject()).isEqualTo("[LEONE FERITO] 주문이 완료되었습니다");
+        assertThat(toBuyer.getFirst().text())
+                .startsWith("김구매님,")
+                .contains("주문번호  " + o[0], "브라운 셔츠 · 100 · 1벌 · 290,000원", "293,000원 (상품 290,000원 + 배송비 3,000원)",
+                        "약 14일", FRONT + "/mypage/order/?no=" + o[0]);
+        for (String admin : List.of("ops@leoneferito.test", "owner@leoneferito.test")) {
+            assertThat(mailsTo(admin)).singleElement()
+                    .satisfies(m -> assertThat(m.subject()).isEqualTo("[새 주문] " + o[0] + " · 293,000원 · 김구매"))
+                    .satisfies(m -> assertThat(m.text()).contains(FRONT + "/admin/orders/detail/?no=" + o[0]));
+        }
+
+        mailer.clear();
+        mockMvc.perform(csrf(mockMvc, post("/api/orders/" + o[0] + "/cancel"), buyer)).andExpect(status().isOk());
+        assertThat(mailsTo("buyer@example.com")).singleElement()
+                .satisfies(m -> assertThat(m.subject()).isEqualTo("[LEONE FERITO] 주문이 취소되었습니다"))
+                .satisfies(m -> assertThat(m.text()).contains("환불 금액  293,000원"));
+        assertThat(mailsTo("ops@leoneferito.test")).singleElement()
+                .satisfies(m -> assertThat(m.subject()).startsWith("[주문 취소] " + o[0]));
+    }
+
+    @Test
+    @DisplayName("주문 알림 — 승인이 실패하면(카드 거절) 아무 메일도 나가지 않는다")
+    void noMailWhenRejected() throws Exception {
+        mailer.clear();
+        Object[] o = order();
+        returned((String) o[0], "reject_card", (long) o[1]).andExpect(status().isSeeOther());
+        assertThat(mailer.sent()).isEmpty();
     }
 
     @Test

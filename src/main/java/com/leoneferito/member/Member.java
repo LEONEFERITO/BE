@@ -88,9 +88,9 @@ public class Member {
 
     /**
      * 현재 이용약관 판. 약관을 개정하면 이 값을 바꾼다 — 그 뒤 가입자는 새 판에 동의한 것으로 남는다.
-     * TODO(고객확인) 약관 확정 · 시행일이 정해지면 "2026-MM-DD" 로 바꾼다.
+     * 2026-10-14 시행판(FE data/terms.ts · privacy.ts 의 시행일과 같다). 오픈일로 바꾸면 셋을 같이 바꾼다.
      */
-    public static final String CURRENT_TERMS_VERSION = "draft-2026-10-01";
+    public static final String CURRENT_TERMS_VERSION = "2026-10-14";
 
     /** 약관 동의 · 만 14세 확인 (V12). 동의 없이는 가입이 되지 않는다. */
     @Column(name = "terms_agreed_at")

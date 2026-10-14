@@ -74,6 +74,8 @@ public class AdminOrderService {
     @Transactional
     public void ship(UUID actorId, String orderNumber, String courier, String trackingNumber) {
         find(orderNumber).ship(actorId, courier.trim(), trackingNumber.trim(), Instant.now());
+        // 손님에게 택배사 · 송장번호 메일 (OrderNotifier)
+        events.publishEvent(new OrderNotifier.Notice(OrderNotifier.Kind.SHIPPED, orderNumber));
         log.info("발송 orderNumber={} actorId={}", orderNumber, actorId);
     }
 
@@ -95,6 +97,7 @@ public class AdminOrderService {
         }
         gateway.cancel(order.getPaymentKey(), order.getOrderNumber(), reason.trim(), "cancel-" + order.getOrderNumber(), null);
         order.cancel(actorId, reason.trim(), order.getTotalAmountKrw(), Instant.now());
+        events.publishEvent(new OrderNotifier.Notice(OrderNotifier.Kind.CANCELLED_BY_ADMIN, orderNumber));
         // 발송 전 취소 — 재고를 세는 사이즈는 돌려놓는다 (V30)
         if (OrderService.restock(products, order)) {
             events.publishEvent(new FrontRebuildTrigger.CatalogChanged("재고"));

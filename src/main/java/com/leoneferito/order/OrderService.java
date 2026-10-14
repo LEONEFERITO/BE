@@ -236,6 +236,8 @@ public class OrderService {
 
         order.markPaid(paymentKey, payment.method(),
                 payment.approvedAt() == null ? Instant.now() : payment.approvedAt());
+        // 주문 알림 — 손님 · 관리자 메일. 커밋된 뒤에 나간다(OrderNotifier)
+        events.publishEvent(new OrderNotifier.Notice(OrderNotifier.Kind.PAID, orderNumber));
 
         // 결제한 줄은 장바구니에서 뺀다. 결제 실패면 그대로 남아 다시 시도할 수 있다.
         UUID memberId = order.getMemberId();
@@ -279,6 +281,7 @@ public class OrderService {
                 return;
             }
             order.markPaid(paymentKey, p.method(), p.approvedAt() == null ? Instant.now() : p.approvedAt());
+            events.publishEvent(new OrderNotifier.Notice(OrderNotifier.Kind.PAID, order.getOrderNumber()));
             // 이미 결제된 돈이다 — 모자라도 막지 않고 남은 만큼만 줄인 뒤 사람이 보게 남긴다
             if (takeStockLeniently(order)) {
                 events.publishEvent(new FrontRebuildTrigger.CatalogChanged("재고"));
@@ -305,6 +308,7 @@ public class OrderService {
         String reason = "고객 요청 취소";
         gateway.cancel(order.getPaymentKey(), order.getOrderNumber(), reason, "cancel-" + order.getOrderNumber(), null);
         order.cancel(null, reason, order.getTotalAmountKrw(), Instant.now());
+        events.publishEvent(new OrderNotifier.Notice(OrderNotifier.Kind.CANCELLED_BY_CUSTOMER, orderNumber));
         if (restock(products, order)) {
             events.publishEvent(new FrontRebuildTrigger.CatalogChanged("재고"));
         }
