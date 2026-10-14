@@ -341,6 +341,27 @@ class OrderApiTest {
         }
 
         @Test
+        @DisplayName("최근 배송지 — 결제한 주문의 받는 곳만(결제 전 주문서는 빼고), 같은 곳은 한 번. 연락처가 비어 있던 회원은 저장된다")
+        void recentAddressesAndPhone() throws Exception {
+            jdbc.update("UPDATE member SET phone = NULL WHERE email = ?", BUYER);
+            send(buyer, get("/api/orders/recent-addresses"), null).andExpect(jsonPath("$.length()").value(0));
+            createOrder(addToCart("ot-trousers", "30", 1)); // 결제 전에 떠난 주문서
+            send(buyer, get("/api/orders/recent-addresses"), null).andExpect(jsonPath("$.length()").value(0));
+            paidOrder();
+            paidOrder(); // 같은 곳
+            send(buyer, get("/api/orders/recent-addresses"), null)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.length()").value(1))
+                    .andExpect(jsonPath("$[0].zipCode").value("16677"))
+                    .andExpect(jsonPath("$[0].address2").value("101호"))
+                    .andExpect(jsonPath("$[0].recipientPhone").value("010-1111-2222"));
+            assertThat(jdbc.queryForObject("SELECT phone FROM member WHERE email = ?", String.class, BUYER))
+                    .isEqualTo("010-1111-2222");
+            Cookie other = login(mockMvc, OTHER, PASSWORD);
+            send(other, get("/api/orders/recent-addresses"), null).andExpect(jsonPath("$.length()").value(0));
+        }
+
+        @Test
         @DisplayName("제주 주소면 추가 배송비가 붙는다 — 주문서 금액(quote)과 실제 주문 금액이 같고, 우편번호 없는 quote 는 기본만")
         void jejuExtraShipping() throws Exception {
             String trousers = addToCart("ot-trousers", "30", 1);

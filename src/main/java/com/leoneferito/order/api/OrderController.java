@@ -62,6 +62,12 @@ public class OrderController {
                                @Pattern(regexp = "^[0-9]{5}$", message = "우편번호는 숫자 5자리입니다.") String zipCode) {
     }
 
+    /** 주문서의 "최근 배송지" — 결제까지 간 주문의 받는 곳, 최근 것부터 5곳. */
+    @GetMapping("/recent-addresses")
+    public List<OrderService.RecentAddress> recentAddresses(@AuthenticationPrincipal MemberPrincipal me) {
+        return orders.recentAddresses(me.getId());
+    }
+
     @PostMapping
     public ResponseEntity<OrderResponse.Created> create(@AuthenticationPrincipal MemberPrincipal me,
                                                         @Valid @RequestBody Create request) {

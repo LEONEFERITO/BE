@@ -28,6 +28,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.leoneferito.member.MemberRepository;
+import java.util.LinkedHashMap;
 
 /**
  * 주문과 결제 (손님 쪽).
@@ -80,11 +82,13 @@ public class OrderService {
     private final ShippingPolicy shipping;
     private final PaymentGateway gateway;
     private final ApplicationEventPublisher events;
+    private final MemberRepository members;
 
     public OrderService(ShopOrderRepository orders, CartItemRepository carts, ProductRepository products,
                         MediaUrls mediaUrls, ShippingPolicy shipping, PaymentGateway gateway,
-                        ApplicationEventPublisher events) {
+                        ApplicationEventPublisher events, MemberRepository members) {
         this.events = events;
+        this.members = members;
         this.orders = orders;
         this.carts = carts;
         this.products = products;
@@ -121,8 +125,32 @@ public class OrderService {
         ShopOrder order = ShopOrder.open(memberId, newOrderNumber(), priced.items(), priced.fee().totalKrw(),
                 recipient, Instant.now());
         orders.save(order);
+        // 내 정보에 연락처가 없으면 이번에 적은 연락처를 저장한다 — 다음 주문서 · 간편 로그인 회원이 다시 적지 않게.
+        // 이미 있으면 건드리지 않는다(선물로 남의 번호를 적었을 수 있다).
+        members.findById(memberId)
+                .filter(m -> m.getPhone() == null || m.getPhone().isBlank())
+                .ifPresent(m -> m.setPhone(recipient.phone()));
         log.info("주문서 작성 orderNumber={} total={}", order.getOrderNumber(), order.getTotalAmountKrw());
         return order;
+    }
+
+    /** 최근 배송지 — 주문서에서 고른다. 결제까지 간 주문에서만(결제 전에 떠난 주문서는 빼고), 같은 곳은 한 번, 최근 것부터 5곳. */
+    @Transactional(readOnly = true)
+    public List<RecentAddress> recentAddresses(UUID memberId) {
+        Map<String, RecentAddress> byPlace = new LinkedHashMap<>();
+        for (ShopOrder o : orders.findByMemberIdAndStatusInOrderByCreatedAtDesc(memberId, VISIBLE)) {
+            RecentAddress a = new RecentAddress(o.getRecipientName(), o.getRecipientPhone(), o.getZipCode(),
+                    o.getAddress1(), o.getAddress2(), o.getDeliveryMemo());
+            byPlace.putIfAbsent(a.recipientName() + "|" + a.zipCode() + "|" + a.address1() + "|" + a.address2(), a);
+            if (byPlace.size() == 5) {
+                break;
+            }
+        }
+        return List.copyOf(byPlace.values());
+    }
+
+    public record RecentAddress(String recipientName, String recipientPhone, String zipCode, String address1,
+                                String address2, String deliveryMemo) {
     }
 
     /**
