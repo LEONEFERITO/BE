@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -28,8 +29,8 @@ import org.springframework.web.bind.annotation.RestController;
  *       공개 API 는 같은 상황에서 뭉뚱그린 한 줄만 준다.</li>
  * </ul>
  *
- * <p>삭제가 없다. 판매가 끝난 상품은 지우는 게 아니라 {@code ARCHIVED} 로 내린다 —
- * 지우면 그 상품이 걸린 과거 주문의 내용이 사라진다. 지금은 공개/비공개만 둔다.
+ * <p>삭제는 주문 이력이 없는 상품만 된다(잘못 만든 초안 · 시험 등록). 주문이 한 번이라도 걸린 상품은 409 —
+ * 주문 기록은 5년 보관이라, 판매가 끝난 상품은 지우지 않고 비공개로 내린다.
  */
 @RestController
 @RequestMapping("/api/admin/products")
@@ -121,6 +122,13 @@ public class AdminProductController {
     @PostMapping("/{id}/unpublish")
     public ResponseEntity<Void> unpublish(@PathVariable UUID id) {
         service.unpublish(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** 삭제 — 주문 이력이 있으면 409(PRODUCT_HAS_ORDERS). 담아 둔 장바구니 줄 · 이 상품의 메인 배너도 함께 지워진다. */
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable UUID id) {
+        service.delete(id);
         return ResponseEntity.noContent().build();
     }
 }

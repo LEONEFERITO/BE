@@ -76,4 +76,16 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
     @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT s FROM ProductSku s WHERE s.product.id = :productId AND s.size = :size")
     Optional<ProductSku> findSkuForUpdate(@Param("productId") UUID productId, @Param("size") String size);
+
+    /** 이 상품이 걸린 주문 항목이 하나라도 있는가 — 있으면 지우지 못한다(주문 기록 5년 보관). 결제 전 주문도 센다. */
+    @Query(value = "SELECT EXISTS (SELECT 1 FROM order_item WHERE product_id = :productId)", nativeQuery = true)
+    boolean hasOrderItems(@Param("productId") UUID productId);
+
+    /**
+     * 이 상품을 담아 둔 장바구니 줄을 모두 지운다 — 상품을 지우기 직전에. 장바구니는 주문이 아니라 지워도 된다.
+     * 상품 → 장바구니 FK 에 CASCADE 를 걸지 않은 이유: 주문 항목(order_item)과 같은 실수를 막으려고 지우는 길을 이 한 곳으로 둔다.
+     */
+    @org.springframework.data.jpa.repository.Modifying
+    @Query(value = "DELETE FROM cart_item WHERE product_id = :productId", nativeQuery = true)
+    int deleteCartItems(@Param("productId") UUID productId);
 }

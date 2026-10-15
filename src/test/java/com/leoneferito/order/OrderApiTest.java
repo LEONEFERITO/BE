@@ -3,6 +3,7 @@ package com.leoneferito.order;
 import static com.leoneferito.member.MemberTestSupport.csrf;
 import static com.leoneferito.member.MemberTestSupport.login;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -1001,6 +1002,52 @@ class OrderApiTest {
             List<String> after = JsonPath.read(mockMvc.perform(get("/api/products"))
                     .andReturn().getResponse().getContentAsString(), "$[*].slug");
             assertThat(after.getFirst()).isEqualTo("ot-trousers");
+        }
+    }
+
+    // ── 관리자 상품 삭제 ─────────────────────────────────────────
+
+    @Nested
+    @DisplayName("관리자 상품 삭제")
+    class ProductDelete {
+
+        private UUID productId(String slug) {
+            return products.findAll().stream().filter(p -> p.getSlug().equals(slug)).findFirst().orElseThrow().getId();
+        }
+
+        @Test
+        @DisplayName("주문 이력이 없으면 지워진다 — 담아 둔 장바구니 줄도 함께. 손님 화면에서 사라진다")
+        void deletesWithoutOrders() throws Exception {
+            addToCart("ot-trousers", "30", 1);
+            Cookie admin = login(mockMvc, ADMIN, PASSWORD);
+            UUID id = productId("ot-trousers");
+
+            send(admin, delete("/api/admin/products/" + id), null).andExpect(status().isNoContent());
+
+            assertThat(products.findById(id)).isEmpty();
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM cart_item WHERE product_id = ?", Long.class, id)).isZero();
+            mockMvc.perform(get("/api/products/ot-trousers")).andExpect(status().isNotFound());
+            send(admin, delete("/api/admin/products/" + id), null).andExpect(status().isNotFound());
+        }
+
+        @Test
+        @DisplayName("주문 이력이 있으면(결제 전 주문 포함) 409 — 상품은 그대로 남는다")
+        void refusesWithOrders() throws Exception {
+            createOrder(addToCart("ot-shirt", "100", 1));
+            Cookie admin = login(mockMvc, ADMIN, PASSWORD);
+            UUID id = productId("ot-shirt");
+
+            send(admin, delete("/api/admin/products/" + id), null)
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value("PRODUCT_HAS_ORDERS"));
+            assertThat(products.findById(id)).isPresent();
+        }
+
+        @Test
+        @DisplayName("관리자만 지울 수 있다")
+        void adminOnly() throws Exception {
+            send(buyer, delete("/api/admin/products/" + productId("ot-trousers")), null).andExpect(status().isForbidden());
+            assertThat(products.existsBySlug("ot-trousers")).isTrue();
         }
     }
 }

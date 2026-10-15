@@ -354,6 +354,13 @@ public class GlobalExceptionHandler {
 						currentTraceId()));
 	}
 
+	/** 주문 이력이 있는 상품을 지우려 했다. 409. 관리자가 할 일(비공개로 내리기)을 문구로 알려 준다. */
+	@ExceptionHandler(com.leoneferito.product.AdminProductService.ProductHasOrdersException.class)
+	public ResponseEntity<ErrorResponse> handleProductHasOrders(com.leoneferito.product.AdminProductService.ProductHasOrdersException e) {
+		return ResponseEntity.status(HttpStatus.CONFLICT)
+				.body(ErrorResponse.of("PRODUCT_HAS_ORDERS", e.getMessage(), currentTraceId()));
+	}
+
 	/** 수정 요청의 세부 분류가 저장된 분류와 맞지 않는다 (트라우저 상품에 OXFORD 등). 400. */
 	@ExceptionHandler(com.leoneferito.product.AdminProductService.StyleMismatchException.class)
 	public ResponseEntity<ErrorResponse> handleStyleMismatch(com.leoneferito.product.AdminProductService.StyleMismatchException e) {

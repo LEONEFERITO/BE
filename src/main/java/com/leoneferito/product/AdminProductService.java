@@ -104,6 +104,31 @@ public class AdminProductService {
     }
 
     /**
+     * 삭제 (2026-10-15 "관리자 상품 관리에서 삭제").
+     *
+     * <p><b>주문 이력이 있으면 지우지 않는다</b> — 결제 전 주문까지 포함. 주문 행은 5년 보관이고 주문 항목이 상품을 가리킨다.
+     * 그런 상품은 비공개로 내리면 손님 화면에서 사라진다. 이력이 없으면(잘못 만든 초안, 시험 등록) 지운다:
+     * 장바구니에 담긴 줄 → 상품(사진 연결 · 사이즈 · 실측 · 이 상품의 메인 배너는 DB CASCADE) 순서.
+     * 올려 둔 사진 파일(media_asset)은 남긴다 — 다른 상품 · 배너가 같은 사진을 쓸 수 있다.
+     */
+    @Transactional
+    public void delete(UUID id) {
+        Product product = products.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("상품 없음: id=" + id));
+        if (products.hasOrderItems(id)) {
+            throw new ProductHasOrdersException();
+        }
+        boolean wasPublished = product.getStatus() == ProductStatus.PUBLISHED;
+        int carts = products.deleteCartItems(id);
+        products.delete(product);
+        products.flush();
+        log.info("상품 삭제 productId={} slug={} cartItems={}", id, product.getSlug(), carts);
+        if (wasPublished) {
+            events.publishEvent(new FrontRebuildTrigger.CatalogChanged("공개 상품 삭제"));
+        }
+    }
+
+    /**
      * 진열 순서 (메인 구성). 공개 상품을 이 순서로 손님 화면에 놓는다 — 메인 첫 화면은 앞에서부터
      * 사진이 있는 4개, 제품 목록도 이 순서다. 화면이 보낸 목록은 지금 공개 상품 전부와 같아야 한다.
      */
@@ -250,6 +275,13 @@ public class AdminProductService {
     public static class SlugChangeNotAllowedException extends RuntimeException {
         public SlugChangeNotAllowedException(String slug) {
             super("slug 변경 불가: " + slug);
+        }
+    }
+
+    /** 주문 이력이 있는 상품은 지울 수 없다. 409. */
+    public static class ProductHasOrdersException extends RuntimeException {
+        public ProductHasOrdersException() {
+            super("주문 이력이 있는 상품은 삭제할 수 없습니다. 비공개로 내려 두세요.");
         }
     }
 
