@@ -181,6 +181,7 @@ class OrderApiTest {
     @AfterEach
     void cleanUp() {
         MemberTestSupport.cleanDatabase(jdbc);
+        jdbc.update("UPDATE shipping_waiver SET waived = FALSE WHERE id = 1"); // 배송비 면제(V32)가 다른 테스트로 새지 않게
         // 다른 테스트 클래스(상품 목록 개수를 세는)와 섞이지 않게 이 테스트의 상품을 지운다.
         products.deleteAll(products.findAll().stream().filter(p -> p.getSlug().startsWith("ot-")).toList());
     }
@@ -1048,6 +1049,38 @@ class OrderApiTest {
         void adminOnly() throws Exception {
             send(buyer, delete("/api/admin/products/" + productId("ot-trousers")), null).andExpect(status().isForbidden());
             assertThat(products.existsBySlug("ot-trousers")).isTrue();
+        }
+    }
+
+    // ── 배송비 면제 스위치 (V32) ──────────────────────────────────
+
+    @Nested
+    @DisplayName("배송비 면제 스위치")
+    class ShippingWaiverSwitch {
+
+        @Test
+        @DisplayName("관리자가 켜면 주문서 · 주문 배송비가 0원(제주 추가 포함), 끄면 원래대로. 손님은 못 바꾼다")
+        void toggles() throws Exception {
+            String trousers = addToCart("ot-trousers", "30", 1);
+            String jeju = "{\"cartItemIds\":[\"" + trousers + "\"],\"zipCode\":\"63100\"}";
+            send(buyer, post("/api/orders/quote"), jeju).andExpect(jsonPath("$.shippingFeeKrw").value(6_000));
+
+            Cookie admin = login(mockMvc, ADMIN, PASSWORD);
+            send(buyer, put("/api/admin/orders/shipping-waiver"), "{\"waived\":true}").andExpect(status().isForbidden());
+            send(admin, put("/api/admin/orders/shipping-waiver"), "{\"waived\":true}")
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.waived").value(true));
+            mockMvc.perform(get("/api/admin/orders/shipping-waiver").cookie(admin)).andExpect(jsonPath("$.waived").value(true));
+
+            send(buyer, post("/api/orders/quote"), jeju)
+                    .andExpect(jsonPath("$.shippingFeeKrw").value(0))
+                    .andExpect(jsonPath("$.totalAmountKrw").value(180_000));
+            Object[] o = createOrder(trousers);
+            assertThat((long) o[1]).isEqualTo(180_000L);
+
+            send(admin, put("/api/admin/orders/shipping-waiver"), "{\"waived\":false}").andExpect(jsonPath("$.waived").value(false));
+            String again = addToCart("ot-trousers", "30", 1);
+            send(buyer, post("/api/orders/quote"), "{\"cartItemIds\":[\"" + again + "\"]}")
+                    .andExpect(jsonPath("$.shippingFeeKrw").value(3_000));
         }
     }
 }

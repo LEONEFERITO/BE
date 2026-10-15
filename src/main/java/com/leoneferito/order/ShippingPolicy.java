@@ -4,7 +4,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalLong;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 /**
@@ -16,6 +18,9 @@ import org.springframework.stereotype.Component;
  *   <li>제주 · 도서산간은 우편번호로 추가 배송비 — {@code remote-areas}. 무료 배송 주문에도 붙는다
  *       (택배사가 받는 추가 운임이라서). 장바구니는 주소를 모르니 기본 배송비만, 주문서가 우편번호로 더한다.</li>
  * </ul>
+ *
+ * <p><b>배송비 면제 스위치(V32)</b> — 관리자가 켜 두면 기본 · 추가 배송비가 모두 0원이다(결제 테스트 · 무료배송 행사).
+ * 값은 매번 DB 에서 읽는다 — 끄면 바로 다음 주문부터 원래대로. 주문은 만들 때 배송비를 저장하므로 이미 만든 주문은 그대로다.
  *
  * <p><b>기본 배송비가 비어 있으면 주문을 받지 않는다(fail closed)</b> — {@code ORDER_SHIPPING_FEE_KRW=} 처럼 일부러 비운 경우.
  * 배송비를 지어내면 그 금액이 실제로 결제된다.
@@ -40,26 +45,53 @@ public class ShippingPolicy {
     private final Long feeKrw;
     private final Long freeThresholdKrw;
     private final List<RemoteArea> remoteAreas;
+    /** 면제 스위치를 읽고 쓰는 곳. 단위 테스트(DB 없음)에서는 null — 늘 꺼진 것으로 본다. */
+    private final JdbcTemplate jdbc;
 
+    /** DB 없이 규칙만 볼 때(단위 테스트). 면제 스위치는 늘 꺼져 있다. */
+    public ShippingPolicy(Long feeKrw, Long freeThresholdKrw, String remoteAreas) {
+        this(feeKrw, freeThresholdKrw, remoteAreas, null);
+    }
+
+    @Autowired
     public ShippingPolicy(@Value("${app.order.shipping-fee-krw:#{null}}") Long feeKrw,
                           @Value("${app.order.free-shipping-threshold-krw:#{null}}") Long freeThresholdKrw,
-                          @Value("${app.order.remote-areas:}") String remoteAreas) {
+                          @Value("${app.order.remote-areas:}") String remoteAreas,
+                          JdbcTemplate jdbc) {
         if (feeKrw != null && feeKrw < 0) {
             throw new IllegalArgumentException("배송비는 0원 이상이어야 한다");
         }
         this.feeKrw = feeKrw;
         this.freeThresholdKrw = freeThresholdKrw;
         this.remoteAreas = parse(remoteAreas);
+        this.jdbc = jdbc;
     }
 
     public boolean isReady() {
         return feeKrw != null;
     }
 
+    /** 배송비 면제 스위치(V32)가 켜져 있는가. 행이 없으면(마이그레이션 전) 꺼진 것으로 본다. */
+    public boolean isWaived() {
+        if (jdbc == null) {
+            return false;
+        }
+        List<Boolean> rows = jdbc.queryForList("SELECT waived FROM shipping_waiver WHERE id = 1", Boolean.class);
+        return !rows.isEmpty() && Boolean.TRUE.equals(rows.getFirst());
+    }
+
+    /** 스위치를 켜고 끈다(관리자). 누가 바꿨는지 남긴다 — 켜 둔 채 잊었을 때 찾을 수 있게. */
+    public void setWaived(boolean waived, String by) {
+        jdbc.update("UPDATE shipping_waiver SET waived = ?, updated_by = ? WHERE id = 1", waived, by);
+    }
+
     /** 주소를 모를 때(장바구니) — 기본 배송비만. 정책이 없으면 비어 있다 — 그러면 주문을 열지 않는다. */
     public OptionalLong feeFor(long itemsAmountKrw) {
         if (feeKrw == null) {
             return OptionalLong.empty();
+        }
+        if (isWaived()) {
+            return OptionalLong.of(0);
         }
         if (freeThresholdKrw != null && itemsAmountKrw >= freeThresholdKrw) {
             return OptionalLong.of(0);
@@ -72,6 +104,10 @@ public class ShippingPolicy {
         OptionalLong base = feeFor(itemsAmountKrw);
         if (base.isEmpty()) {
             return Optional.empty();
+        }
+        if (isWaived()) {
+            // 면제는 추가 배송비까지 — "배송비 0원" 이라고 켰는데 제주에서 3,000원이 붙으면 켠 사람이 모른다
+            return Optional.of(new Fee(0, 0, null));
         }
         RemoteArea area = areaOf(zipCode);
         return Optional.of(area == null ? new Fee(base.getAsLong(), 0, null)

@@ -215,6 +215,8 @@ class NicePayApiTest {
         String nonce = "NICEUNTT" + UUID.randomUUID().toString().replace("-", "");
         String sig = signature != null ? signature : sha256(nonce + CLIENT_ID + amount + MERCHANT_SIGNING_VALUE);
         return mockMvc.perform(post("/api/payments/nicepay/return")
+                // 결제창(나이스페이 도메인)에서 보낸 폼이라 브라우저가 Origin 을 붙인다 — 운영에서 이걸로 403 이 났다(2026-10-15)
+                .header("Origin", "https://pay.nicepay.co.kr")
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                 .param("authResultCode", code)
                 .param("authResultMsg", "0000".equals(code) ? "인증 성공" : "고객 결제 취소")

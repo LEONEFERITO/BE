@@ -250,6 +250,23 @@ public class SecurityConfig {
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/api/**", config);
-        return source;
+        /*
+         * 결제사가 손님 브라우저나 서버에서 보내는 주소는 CORS 검사에서 뺀다 (2026-10-15 운영 결제 실패).
+         * 나이스페이 결제창은 인증을 마치면 손님 브라우저를 /return 으로 폼 POST 하는데, 브라우저가
+         * Origin: (나이스페이 도메인) 을 붙인다. 허용 출처에 없으니 CORS 필터가 403 "Invalid CORS request" 로 끊었고,
+         * 서명 확인 · 승인까지 가지 못했다. 이 주소들은 화면이 fetch 로 부르는 곳이 아니라 응답을 읽는 스크립트가 없다 —
+         * CORS 가 지킬 것이 없다. 위조는 서명(나이스 · 토스)이 막고, 쿠키를 쓰지 않으며, CSRF 도 같은 이유로 뺐다(위).
+         */
+        return request -> {
+            String path = request.getRequestURI().substring(request.getContextPath().length());
+            if (PAYMENT_CALLBACKS.contains(path)) {
+                return null;
+            }
+            return source.getCorsConfiguration(request);
+        };
     }
+
+    /** 결제사가 부르는 주소 — CSRF · CORS 를 받지 않는다. 위조는 각 결제사의 서명으로 막는다. */
+    private static final java.util.Set<String> PAYMENT_CALLBACKS = java.util.Set.of(
+            "/api/payments/toss/webhook", "/api/payments/nicepay/return", "/api/payments/nicepay/webhook");
 }

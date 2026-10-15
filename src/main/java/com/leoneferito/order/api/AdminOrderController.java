@@ -25,10 +25,32 @@ public class AdminOrderController {
 
     private final AdminOrderService service;
     private final AdminReturnService returns;
+    private final com.leoneferito.order.ShippingPolicy shipping;
 
-    public AdminOrderController(AdminOrderService service, AdminReturnService returns) {
+    public AdminOrderController(AdminOrderService service, AdminReturnService returns,
+                                com.leoneferito.order.ShippingPolicy shipping) {
         this.service = service;
         this.returns = returns;
+        this.shipping = shipping;
+    }
+
+    /** 배송비 면제 스위치(V32) — 지금 상태. */
+    @GetMapping("/shipping-waiver")
+    public ShippingWaiver shippingWaiver() {
+        return new ShippingWaiver(shipping.isWaived());
+    }
+
+    /** 배송비 면제 켜기 · 끄기. 켜면 다음 주문부터 배송비 0원(제주 · 도서산간 추가 포함). 이미 만든 주문은 그대로. */
+    @org.springframework.web.bind.annotation.PutMapping("/shipping-waiver")
+    public ShippingWaiver setShippingWaiver(@AuthenticationPrincipal MemberPrincipal admin,
+                                            @RequestBody ShippingWaiver in) {
+        shipping.setWaived(in.waived(), admin == null ? null : admin.getEmail());
+        org.slf4j.LoggerFactory.getLogger(AdminOrderController.class)
+                .info("배송비 면제 {} by={}", in.waived() ? "켬" : "끔", admin == null ? null : admin.getEmail());
+        return new ShippingWaiver(shipping.isWaived());
+    }
+
+    public record ShippingWaiver(boolean waived) {
     }
 
     @GetMapping
