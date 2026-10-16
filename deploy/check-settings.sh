@@ -59,7 +59,8 @@ from_domain="$(val MAIL_FROM | sed -n 's/.*@\([A-Za-z0-9.-]*\).*/\1/p')"
 from_domain="${from_domain:-leoneferito.kr}"
 if command -v dig >/dev/null; then
   spf="$(dig +short TXT "$from_domain" | grep -i 'v=spf1' | head -1)"
-  dmarc="$(dig +short TXT "_dmarc.$from_domain" | head -1)"
+  # 카페24는 *.도메인 와일드카드가 있어 _dmarc 가 "leoneferito.kr." 로 답할 수 있다 — v=DMARC1 이 있어야 진짜 레코드다
+  dmarc="$(dig +short TXT "_dmarc.$from_domain" | grep -i 'v=DMARC1' | head -1)"
   [ -n "$spf" ] && ok "SPF: $spf" || bad "SPF 없음 — $from_domain TXT 에 v=spf1 … 추가"
   [ -n "$dmarc" ] && ok "DMARC: $dmarc" || bad "DMARC 없음 — _dmarc.$from_domain TXT 추가"
   warn "DKIM 은 발송 서비스(SES 등)가 주는 CNAME 3개가 DNS 에 있는지 그 콘솔에서 확인"
