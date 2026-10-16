@@ -354,6 +354,20 @@ public class GlobalExceptionHandler {
 						currentTraceId()));
 	}
 
+	/**
+	 * 상품 일괄 등록 파일이 틀렸다. 400. 줄 · 칸 · 이유를 전부 돌려준다 — 하나 고치고 다시 올려 다음 것을 보는 일이 없게.
+	 * fieldErrors 의 field 는 "3행 · 판매가" 처럼 사람이 읽는 위치다(관리자 화면이 그대로 보인다).
+	 */
+	@ExceptionHandler(com.leoneferito.product.ProductImportService.ImportException.class)
+	public ResponseEntity<ErrorResponse> handleImport(com.leoneferito.product.ProductImportService.ImportException e) {
+		List<ErrorResponse.FieldError> rows = e.getErrors().stream()
+				.map(r -> new ErrorResponse.FieldError(
+						(r.row() > 0 ? r.row() + "행" : "파일") + (r.column() == null ? "" : " · " + r.column()), r.message()))
+				.toList();
+		return ResponseEntity.badRequest()
+				.body(ErrorResponse.withFields("IMPORT_INVALID", e.getMessage(), currentTraceId(), rows));
+	}
+
 	/** 주문 이력이 있는 상품을 지우려 했다. 409. 관리자가 할 일(비공개로 내리기)을 문구로 알려 준다. */
 	@ExceptionHandler(com.leoneferito.product.AdminProductService.ProductHasOrdersException.class)
 	public ResponseEntity<ErrorResponse> handleProductHasOrders(com.leoneferito.product.AdminProductService.ProductHasOrdersException e) {

@@ -39,9 +39,12 @@ public class AdminProductController {
     private final AdminProductService service;
     private final AdminProductQueryService queries;
     private final com.leoneferito.product.ProductQueryService categories;
+    private final com.leoneferito.product.ProductImportService importer;
 
     public AdminProductController(AdminProductService service, AdminProductQueryService queries,
-                                  com.leoneferito.product.ProductQueryService categories) {
+                                  com.leoneferito.product.ProductQueryService categories,
+                                  com.leoneferito.product.ProductImportService importer) {
+        this.importer = importer;
         this.categories = categories;
         this.service = service;
         this.queries = queries;
@@ -123,6 +126,29 @@ public class AdminProductController {
     public ResponseEntity<Void> unpublish(@PathVariable UUID id) {
         service.unpublish(id);
         return ResponseEntity.noContent().build();
+    }
+
+    /** 일괄 등록 양식(CSV, 엑셀에서 연다) — 머리줄 + 예시 두 줄. */
+    @GetMapping("/import/template")
+    public ResponseEntity<byte[]> importTemplate() {
+        return ResponseEntity.ok()
+                .contentType(org.springframework.http.MediaType.parseMediaType("text/csv; charset=UTF-8"))
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"leoneferito-products.csv\"")
+                .body(com.leoneferito.product.ProductImportService.template());
+    }
+
+    /**
+     * 일괄 등록 (2026-10-16) — 엑셀에서 저장한 CSV 한 줄이 상품 하나, 전부 초안. 한 줄이라도 틀리면 아무것도 저장하지 않고
+     * 400 IMPORT_INVALID + 줄 · 칸 · 이유 목록(rowErrors).
+     */
+    @PostMapping("/import")
+    public ImportResult importCsv(@org.springframework.web.bind.annotation.RequestParam("file")
+                                  org.springframework.web.multipart.MultipartFile file) throws java.io.IOException {
+        return new ImportResult(importer.importCsv(file.getBytes()));
+    }
+
+    public record ImportResult(java.util.List<com.leoneferito.product.ProductImportService.Created> created) {
     }
 
     /** 복제 — 초안으로 복사본을 만들고 그 id 를 준다. 화면은 바로 수정 화면으로 간다. */

@@ -974,6 +974,85 @@ class AdminApiTest {
     }
 
     @Nested
+    @DisplayName("상품 일괄 등록 — 엑셀 CSV (2026-10-16)")
+    class BulkImport {
+
+        private org.springframework.test.web.servlet.ResultActions upload(byte[] bytes) throws Exception {
+            return mockMvc.perform(asAdmin(multipart("/api/admin/products/import")
+                    .file(new MockMultipartFile("file", "products.csv", "text/csv", bytes))));
+        }
+
+        @Test
+        @DisplayName("양식을 그대로 올리면 예시 두 줄이 초안으로 생긴다 — 한글 분류 · 라인, 쉼표 든 가격, 사이즈 목록, 비운 주소는 자동")
+        void templateImports() throws Exception {
+            byte[] template = mockMvc.perform(asAdmin(get("/api/admin/products/import/template")))
+                    .andExpect(status().isOk())
+                    .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.containsString("leoneferito-products.csv")))
+                    .andReturn().getResponse().getContentAsByteArray();
+            org.assertj.core.api.Assertions.assertThat(template[0] & 0xff).isEqualTo(0xEF); // 엑셀이 한글을 깨지 않게 BOM
+
+            String res = upload(template).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.created.length()").value(2))
+                    .andExpect(jsonPath("$.created[0].row").value(2))
+                    .andExpect(jsonPath("$.created[1].slug").value("straight-trousers-navy"))
+                    .andReturn().getResponse().getContentAsString();
+            String shirtId = com.jayway.jsonpath.JsonPath.read(res, "$.created[0].id");
+            String shirtSlug = com.jayway.jsonpath.JsonPath.read(res, "$.created[0].slug");
+            org.assertj.core.api.Assertions.assertThat(shirtSlug).startsWith("p-");
+
+            mockMvc.perform(asAdmin(get("/api/admin/products/" + shirtId)))
+                    .andExpect(jsonPath("$.name").value("클래식 옥스퍼드 셔츠 · 화이트"))
+                    .andExpect(jsonPath("$.category").value("SHIRT"))
+                    .andExpect(jsonPath("$.line").value("FERITO"))
+                    .andExpect(jsonPath("$.status").value("DRAFT"))
+                    .andExpect(jsonPath("$.priceKrw").value(100000))
+                    .andExpect(jsonPath("$.leadTimeDays").value(14))
+                    .andExpect(jsonPath("$.skus.length()").value(4))
+                    .andExpect(jsonPath("$.manufacturer").value("레오네페리토"));
+        }
+
+        @Test
+        @DisplayName("한 줄이라도 틀리면 아무것도 저장하지 않고 줄 · 칸 · 이유를 전부 돌려준다")
+        void allOrNothing() throws Exception {
+            String csv = "상품명*,분류*,라인*,판매가,세부분류,주소\r\n"
+                    + "멀쩡한 셔츠,셔츠,페리토,90000,,ok-shirt\r\n"
+                    + "틀린 바지,바지,레오네,구만원,옥스퍼드,\r\n"
+                    + ",모자,페리토,,,ok-shirt\r\n";
+            upload(csv.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("IMPORT_INVALID"))
+                    .andExpect(jsonPath("$.fieldErrors[?(@.field == '3행 · 판매가')]").exists())
+                    .andExpect(jsonPath("$.fieldErrors[?(@.field == '4행 · 상품명')]").exists())
+                    .andExpect(jsonPath("$.fieldErrors[?(@.field == '4행 · 분류')]").exists())
+                    .andExpect(jsonPath("$.fieldErrors[?(@.field == '4행 · 주소')]").exists());
+            org.assertj.core.api.Assertions.assertThat(products.existsBySlug("ok-shirt")).isFalse();
+        }
+
+        @Test
+        @DisplayName("한국어 엑셀의 기본 CSV(CP949)도 읽는다. 따옴표 안 쉼표 · 줄바꿈도 그대로")
+        void cp949AndQuotes() throws Exception {
+            String csv = "상품명*,분류*,라인*,상세설명,주소\r\n"
+                    + "\"린넨 셔츠, 베이지\",셔츠,페리토,\"첫 줄\n둘째 줄 \"\"인용\"\"\",linen-beige\r\n";
+            upload(csv.getBytes(java.nio.charset.Charset.forName("x-windows-949"))).andExpect(status().isOk());
+            String id = products.findAll().stream().filter(p -> p.getSlug().equals("linen-beige")).findFirst().orElseThrow().getId().toString();
+            mockMvc.perform(asAdmin(get("/api/admin/products/" + id)))
+                    .andExpect(jsonPath("$.name").value("린넨 셔츠, 베이지"))
+                    .andExpect(jsonPath("$.description").value("첫 줄\n둘째 줄 \"인용\""));
+        }
+
+        @Test
+        @DisplayName("필수 칸이 없는 파일은 머리줄에서 막고, 회원은 올릴 수 없다")
+        void headerAndGuard() throws Exception {
+            upload("이름,가격\r\n셔츠,1000\r\n".getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.fieldErrors[0].field").value("1행 · 상품명"));
+            mockMvc.perform(asMember(multipart("/api/admin/products/import")
+                            .file(new MockMultipartFile("file", "p.csv", "text/csv", new byte[] {1}))))
+                    .andExpect(status().isForbidden());
+        }
+    }
+
+    @Nested
     @DisplayName("상품 복제 (2026-10-16)")
     class Duplicate {
 
