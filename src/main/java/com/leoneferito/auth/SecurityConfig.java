@@ -192,6 +192,8 @@ public class SecurityConfig {
                          */
                         // 관리자 지정·해제는 최고 관리자만. 위에서부터 맞추므로 /api/admin/** 보다 먼저 와야 한다.
                         .requestMatchers(HttpMethod.PUT, "/api/admin/members/*/role").hasRole("SUPER_ADMIN")
+                        // 접속 기록(V33) 조회는 최고 관리자만 — 관리자가 자기 기록을 못 보게가 아니라, 기록의 신뢰를 위해
+                        .requestMatchers("/api/admin/access-logs").hasRole("SUPER_ADMIN")
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         // CORS 사전 요청은 인증 대상이 아니다
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()

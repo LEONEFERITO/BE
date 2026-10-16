@@ -104,6 +104,55 @@ public class AdminProductService {
     }
 
     /**
+     * 복제 (2026-10-16 "상품 한번에 등록"). 같은 셔츠의 색상 · 라인 변형처럼 비슷한 상품을 빨리 만든다.
+     *
+     * <p>이름 · 분류 · 세부 분류 · 가격 · 설명 · 고시 · 모델 · 제작 기간 · 사진(같은 파일을 가리킨다) · 사이즈 · 실측을 전부 복사해
+     * <b>초안</b>으로 만든다. slug 는 {@code 원본-copy}(겹치면 -copy-2 …), 이름 뒤에 " (복제)" — 관리자가 바로 고치게.
+     * 재고는 복사하지 않는다(새 상품은 새로 센다). 진열 순서도 0 — 공개할 때 정한다.
+     */
+    @Transactional
+    public UUID duplicate(UUID id) {
+        Product src = products.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("상품 없음: id=" + id));
+        String base = src.getSlug() + "-copy";
+        String slug = base;
+        for (int n = 2; products.existsBySlug(slug); n++) {
+            slug = base + "-" + n;
+        }
+        Product copy = new Product(UUID.randomUUID(), slug, src.getCategory(), src.getLine());
+        copy.setName((src.getName() == null ? "" : src.getName()) + " (복제)");
+        copy.setStyle(src.getStyle());
+        copy.setSummary(src.getSummary());
+        copy.setPriceKrw(src.getPriceKrw());
+        copy.setListPriceKrw(src.getListPriceKrw());
+        copy.setDescription(src.getDescription());
+        copy.setIntent(src.getIntent());
+        copy.setFeatures(src.getFeatures());
+        copy.setFabric(src.getFabric());
+        copy.setCare(src.getCare());
+        copy.setNotice(src.getColor(), src.getManufacturer(), src.getCountryOfOrigin(), src.getManufacturedOn());
+        copy.setModel(src.getModelHeightCm(), src.getModelWeightKg(), src.getModelSize());
+        copy.setLeadTimeDays(src.getLeadTimeDays());
+        copy.setInstagramUrl(src.getInstagramUrl());
+        copy.setSizeChart(src.getSizeChart(), src.getSizeChartAlt());
+        copy.setDisplayOrder(0);
+        for (ProductImage i : src.getImages()) {
+            copy.addImage(new ProductImage(UUID.randomUUID(), i.getMedia(), i.getKind(), i.getAlt(), i.getSortOrder()));
+        }
+        for (ProductSku s : src.getSkus()) {
+            ProductSku sku = new ProductSku(UUID.randomUUID(), s.getSize(), s.getSortOrder());
+            sku.setOrderable(s.isOrderable());
+            for (ProductMeasurement m : s.getMeasurements()) {
+                sku.addMeasurement(new ProductMeasurement(UUID.randomUUID(), m.getPart(), m.getValueCm(), m.getToleranceCm()));
+            }
+            copy.addSku(sku);
+        }
+        products.save(copy);
+        log.info("상품 복제 from={} to={} slug={}", id, copy.getId(), slug);
+        return copy.getId();
+    }
+
+    /**
      * 삭제 (2026-10-15 "관리자 상품 관리에서 삭제").
      *
      * <p><b>주문 이력이 있으면 지우지 않는다</b> — 결제 전 주문까지 포함. 주문 행은 5년 보관이고 주문 항목이 상품을 가리킨다.

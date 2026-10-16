@@ -53,7 +53,11 @@ public class OrderNotifier {
             이 메일은 발신 전용입니다.
             """;
 
-    public enum Kind { PAID, SHIPPED, CANCELLED_BY_CUSTOMER, CANCELLED_BY_ADMIN, RETURN_REQUESTED }
+    public enum Kind {
+        PAID, SHIPPED, CANCELLED_BY_CUSTOMER, CANCELLED_BY_ADMIN, RETURN_REQUESTED,
+        /** 2026-10-16 보강 — 교환·반품 진행도 손님에게 알린다 */
+        RETURN_APPROVED, RETURN_REJECTED, RETURN_COMPLETED, EXCHANGE_SHIPPED
+    }
 
     /** 알릴 일. 교환·반품 신청은 {@code returnId} 를 함께 준다. */
     public record Notice(Kind kind, String orderNumber, UUID returnId) {
@@ -108,6 +112,28 @@ public class OrderNotifier {
                     if (n.kind() == Kind.CANCELLED_BY_CUSTOMER) {
                         toAdmins("[주문 취소] " + no + " · 손님이 취소 · " + won(o.getRefundedAmountKrw()),
                                 summary(o) + "\n관리자 화면 " + front + "/admin/orders/detail/?no=" + no);
+                    }
+                }
+                case RETURN_APPROVED, RETURN_REJECTED, RETURN_COMPLETED, EXCHANGE_SHIPPED -> {
+                    ReturnRequest r = n.returnId() == null ? null : returns.findById(n.returnId()).orElse(null);
+                    if (r == null) {
+                        return;
+                    }
+                    String type = TYPE.get(r.getType());
+                    String tail = "\n\n주문번호  " + no + "\n주문 상세 " + front + "/mypage/order/?no=" + no;
+                    switch (n.kind()) {
+                        case RETURN_APPROVED -> toCustomer(o, type + " 신청이 승인되었습니다", type + " 신청을 승인했습니다. "
+                                + (r.getType() == ReturnType.RETURN ? "상품을 보내 주시면 확인한 뒤 환불해 드립니다."
+                                        : "상품을 보내 주시면 확인한 뒤 교환 상품을 보내 드립니다.")
+                                + (r.getAdminNote() == null ? "" : "\n\n안내  " + r.getAdminNote()) + tail);
+                        case RETURN_REJECTED -> toCustomer(o, type + " 신청이 거절되었습니다", type + " 신청을 받아 드리지 못했습니다."
+                                + (r.getRejectReason() == null ? "" : "\n\n사유  " + r.getRejectReason())
+                                + "\n\n궁금한 점은 카카오톡 채널로 문의해 주세요." + tail);
+                        case RETURN_COMPLETED -> toCustomer(o, "반품이 완료되었습니다", "반품을 확인하고 환불했습니다.\n\n환불 금액  "
+                                + won(r.getRefundAmountKrw()) + "\n\n카드 결제는 카드사에 따라 3~7영업일 안에 취소가 반영됩니다." + tail);
+                        case EXCHANGE_SHIPPED -> toCustomer(o, "교환 상품을 보냈습니다", "교환 상품을 보냈습니다.\n\n택배사  "
+                                + r.getReshipCourier() + "\n송장번호  " + r.getReshipTrackingNumber() + tail);
+                        default -> { }
                     }
                 }
                 case RETURN_REQUESTED -> {
@@ -169,6 +195,19 @@ public class OrderNotifier {
 
     private void toAdmins(String subject, String body) {
         admins.forEach(to -> mailer.send(to, subject, body));
+    }
+
+    /**
+     * 관리자 경보 — 사람이 봐야 하는 일(결제 금액 불일치 · 환불액 불일치 · 재고보다 많이 결제). 2026-10-16 보강.
+     * 트랜잭션 이벤트가 아니라 바로 보낸다: 이 일들은 대개 예외로 끝나 롤백되므로 AFTER_COMMIT 이 오지 않는다.
+     * 메일 자체는 Mailer 가 다른 스레드에서 보낸다 — 요청을 붙잡지 않는다.
+     */
+    public void alertAdmins(String what, String detail) {
+        if (admins.isEmpty()) {
+            log.warn("관리자 경보 받을 곳 없음(app.notify.admin-emails 비어 있음) — {}", what);
+            return;
+        }
+        toAdmins("[확인 필요] " + what, detail + "\n\n관리자 화면 " + front + "/admin/orders/");
     }
 
     private static int leadTime(ShopOrder o) {

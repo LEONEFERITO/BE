@@ -125,6 +125,13 @@ public class AdminProductController {
         return ResponseEntity.noContent().build();
     }
 
+    /** 복제 — 초안으로 복사본을 만들고 그 id 를 준다. 화면은 바로 수정 화면으로 간다. */
+    @PostMapping("/{id}/duplicate")
+    public ResponseEntity<Map<String, UUID>> duplicate(@PathVariable UUID id) {
+        UUID copy = service.duplicate(id);
+        return ResponseEntity.created(URI.create("/api/admin/products/" + copy)).body(Map.of("id", copy));
+    }
+
     /** 삭제 — 주문 이력이 있으면 409(PRODUCT_HAS_ORDERS). 담아 둔 장바구니 줄 · 이 상품의 메인 배너도 함께 지워진다. */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable UUID id) {

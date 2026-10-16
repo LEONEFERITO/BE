@@ -33,6 +33,10 @@ public class MediaAsset {
     @Column(name = "storage_key", nullable = false, unique = true)
     private String storageKey;
 
+    /** 비공개(V34) — 교환·반품 증빙 사진. /media/** 가 내보내지 않고, 권한 있는 경로로만 본다. */
+    @Column(name = "private", nullable = false)
+    private boolean privateAsset;
+
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
     private Instant createdAt;
 
@@ -77,6 +81,15 @@ public class MediaAsset {
 
     public String getStorageKey() {
         return storageKey;
+    }
+
+    public boolean isPrivate() {
+        return privateAsset;
+    }
+
+    /** 비공개로 돌린다. 되돌리는 메서드는 없다 — 증빙 사진이 공개로 바뀔 이유가 없다. */
+    public void markPrivate() {
+        this.privateAsset = true;
     }
 
     /** 영상(MP4 · WebM, V29 메인 배너)인가. 이미지 자리에 영상이, 영상 자리에 이미지가 걸리지 않게 가른다. */

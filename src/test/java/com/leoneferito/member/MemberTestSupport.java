@@ -39,6 +39,7 @@ public final class MemberTestSupport {
         jdbc.update("DELETE FROM notice");
         jdbc.update("DELETE FROM faq");
         jdbc.update("DELETE FROM member_admin_log");
+        jdbc.update("DELETE FROM admin_access_log");
         jdbc.update("DELETE FROM password_reset_token");
         jdbc.update("DELETE FROM member");
     }

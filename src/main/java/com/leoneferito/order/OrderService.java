@@ -83,10 +83,13 @@ public class OrderService {
     private final PaymentGateway gateway;
     private final ApplicationEventPublisher events;
     private final MemberRepository members;
+    /** 사람이 봐야 하는 일을 관리자에게 바로 알린다(2026-10-16). 이벤트가 아닌 이유는 OrderNotifier.alertAdmins 주석. */
+    private final OrderNotifier notifier;
 
     public OrderService(ShopOrderRepository orders, CartItemRepository carts, ProductRepository products,
                         MediaUrls mediaUrls, ShippingPolicy shipping, PaymentGateway gateway,
-                        ApplicationEventPublisher events, MemberRepository members) {
+                        ApplicationEventPublisher events, MemberRepository members, OrderNotifier notifier) {
+        this.notifier = notifier;
         this.events = events;
         this.members = members;
         this.orders = orders;
@@ -247,6 +250,9 @@ public class OrderService {
         if (amount != order.getTotalAmountKrw()) {
             log.warn("결제 금액 불일치 orderNumber={} expected={} got={}",
                     orderNumber, order.getTotalAmountKrw(), amount);
+            notifier.alertAdmins("결제 금액 불일치 · " + orderNumber, "결제창이 보낸 금액이 주문 금액과 다릅니다 — 승인하지 않았습니다.\n"
+                    + "주문 금액  " + order.getTotalAmountKrw() + "원\n받은 금액  " + amount + "원\n\n"
+                    + "손님이 주문서를 다시 만들면 해결됩니다. 같은 주문에서 반복되면 결제창 연동을 봐야 합니다.");
             throw new AmountMismatchException();
         }
 
@@ -262,6 +268,9 @@ public class OrderService {
             // 결제사가 승인했는데 금액·상태가 다르다 — 있어선 안 되는 일. 결제 키를 남기고 사람이 본다.
             log.error("결제 승인 결과 불일치 orderNumber={} paymentKey={} status={} amount={}",
                     orderNumber, paymentKey, payment.status(), payment.totalAmount());
+            notifier.alertAdmins("결제 승인 결과 불일치 · " + orderNumber, "결제사가 승인했는데 금액 · 상태가 주문과 다릅니다.\n"
+                    + "결제 키  " + paymentKey + "\n상태  " + payment.status() + "\n결제사 금액  " + payment.totalAmount()
+                    + "원\n주문 금액  " + order.getTotalAmountKrw() + "원\n\n결제사 관리자에서 이 결제를 확인하고 필요하면 취소하세요.");
             throw new PaymentException("MISMATCH", "결제 확인 중 문제가 생겼습니다. 고객센터로 문의해 주세요.");
         }
 
@@ -309,6 +318,8 @@ public class OrderService {
             if (p.totalAmount() == null || p.totalAmount() != order.getTotalAmountKrw()) {
                 log.error("웹훅: 결제 금액 불일치 orderNumber={} paymentKey={} amount={}",
                         order.getOrderNumber(), paymentKey, p.totalAmount());
+                notifier.alertAdmins("웹훅 결제 금액 불일치 · " + order.getOrderNumber(), "결제사 웹훅이 알린 결제 금액이 주문과 다릅니다 — 반영하지 않았습니다.\n"
+                        + "결제 키  " + paymentKey + "\n결제사 금액  " + p.totalAmount() + "원\n주문 금액  " + order.getTotalAmountKrw() + "원");
                 return;
             }
             order.markPaid(paymentKey, p.method(), p.approvedAt() == null ? Instant.now() : p.approvedAt());
@@ -325,6 +336,9 @@ public class OrderService {
         if (cancelled && p.refundedAmount() != order.getRefundedAmountKrw()) {
             log.error("웹훅: 환불액 불일치 — 사람이 확인 orderNumber={} gateway={} ours={}",
                     order.getOrderNumber(), p.refundedAmount(), order.getRefundedAmountKrw());
+            notifier.alertAdmins("환불액 불일치 · " + order.getOrderNumber(), "결제사가 기록한 환불액과 우리 기록이 다릅니다.\n"
+                    + "결제사  " + p.refundedAmount() + "원\n우리  " + order.getRefundedAmountKrw()
+                    + "원\n\n결제사 관리자에서 직접 취소한 건이 있는지 확인하세요.");
         }
     }
 
@@ -426,6 +440,9 @@ public class OrderService {
             if (before < item.getQuantity()) {
                 log.error("재고보다 많이 결제됨 — 사람이 확인 orderNumber={} size={} stock={} want={}",
                         order.getOrderNumber(), item.getSize(), before, item.getQuantity());
+                notifier.alertAdmins("재고보다 많이 결제됨 · " + order.getOrderNumber(), "이미 결제된 주문인데 남은 재고가 모자랍니다.\n"
+                        + "상품  " + item.getProductName() + " · " + item.getSize() + "\n남은 재고  " + before + "\n주문 수량  "
+                        + item.getQuantity() + "\n\n제작 가능하면 그대로 진행하고, 아니면 손님에게 연락해 취소 · 환불하세요.");
             }
             sku.take(Math.min(before, item.getQuantity()));
             shown |= shownStockChanged(before, sku.getStock());

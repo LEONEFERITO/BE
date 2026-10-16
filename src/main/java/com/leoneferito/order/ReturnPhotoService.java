@@ -2,7 +2,6 @@ package com.leoneferito.order;
 
 import com.leoneferito.media.MediaAsset;
 import com.leoneferito.media.MediaService;
-import com.leoneferito.media.MediaUrls;
 import com.leoneferito.order.ReturnService.ReturnException;
 import java.io.IOException;
 import java.util.HashSet;
@@ -24,12 +23,17 @@ public class ReturnPhotoService {
 
     private final ReturnPhotoRepository photos;
     private final MediaService media;
-    private final MediaUrls urls;
+    private final String apiBase;
 
-    public ReturnPhotoService(ReturnPhotoRepository photos, MediaService media, MediaUrls urls) {
+    /**
+     * @param apiBase API 의 바깥 주소(app.api.base-url). 사진 주소는 /api/returns/photos/{id} — 손님 화면이 다른 도메인이라
+     *                절대 주소여야 한다. 같은 사이트(leoneferito.kr ↔ api.leoneferito.kr)라 쿠키가 실린다.
+     */
+    public ReturnPhotoService(ReturnPhotoRepository photos, MediaService media,
+                              @org.springframework.beans.factory.annotation.Value("${app.api.base-url}") String apiBase) {
         this.photos = photos;
         this.media = media;
-        this.urls = urls;
+        this.apiBase = apiBase.replaceAll("/+$", "");
     }
 
     @Transactional
@@ -39,9 +43,26 @@ public class ReturnPhotoService {
         }
         // 아이폰 HEIC 까지 받는다 — 손님은 사진을 찍은 그대로 올린다
         MediaAsset asset = media.upload(file, com.leoneferito.media.ImageFormat.EVIDENCE);
-        ReturnPhoto photo = photos.save(new ReturnPhoto(memberId, asset, urls.urlFor(asset)));
+        // 증빙 사진은 공개 주소(/media/**)로 내보내지 않는다(V34). 주인과 관리자만 아래 serve 로 본다
+        asset.markPrivate();
+        UUID photoId = UUID.randomUUID();
+        ReturnPhoto photo = photos.save(new ReturnPhoto(photoId, memberId, asset, apiBase + "/api/returns/photos/" + photoId));
         log.info("교환·반품 사진 업로드 photoId={}", photo.getId());
         return photo;
+    }
+
+    /** 어디에 저장됐는지(키)와 타입 — 컨트롤러가 파일을 내보낼 때 필요한 둘. 엔티티(지연 로딩)를 트랜잭션 밖으로 내보내지 않는다. */
+    public record PhotoFile(String storageKey, String contentType) {
+    }
+
+    /** 보기 — 주인이거나 관리자. 아니면 404(존재를 알리지 않는다). */
+    @Transactional(readOnly = true)
+    public PhotoFile view(UUID photoId, UUID memberId, boolean admin) {
+        ReturnPhoto photo = photos.findById(photoId)
+                .filter(p -> admin || p.isOwnedBy(memberId))
+                .orElseThrow(() -> new com.leoneferito.common.error.ResourceNotFoundException("사진 없음 id=" + photoId));
+        MediaAsset a = photo.getMedia();
+        return new PhotoFile(a.getStorageKey(), a.getContentType());
     }
 
     void attach(UUID memberId, List<UUID> ids, ReturnRequest request) {

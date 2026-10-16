@@ -25,8 +25,8 @@ public class ReturnPhoto {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
     protected ReturnPhoto(){}
-    public ReturnPhoto(UUID memberId, MediaAsset media, String url){
-        this.id = UUID.randomUUID();
+    public ReturnPhoto(UUID id, UUID memberId, MediaAsset media, String url){
+        this.id = Objects.requireNonNull(id);
         this.memberId = Objects.requireNonNull(memberId);
         this.media = Objects.requireNonNull(media);
         this.url = Objects.requireNonNull(url);
@@ -49,6 +49,9 @@ public class ReturnPhoto {
     }
     public String getUrl(){
         return url;
+    }
+    public MediaAsset getMedia(){
+        return media;
     }
     public Instant getCreatedAt(){
         return createdAt;

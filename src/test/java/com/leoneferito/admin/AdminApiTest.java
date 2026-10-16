@@ -973,6 +973,51 @@ class AdminApiTest {
         }
     }
 
+    @Nested
+    @DisplayName("상품 복제 (2026-10-16)")
+    class Duplicate {
+
+        @Test
+        @DisplayName("복제하면 사진 · 사이즈 · 고시까지 같은 초안이 생기고, slug 는 -copy, 또 하면 -copy-2")
+        void copiesEverythingAsDraft() throws Exception {
+            String id = createProduct("navy-shirt");
+            attachImageAndPublish(id, "navy-shirt", uploadImage());
+
+            String copy = com.jayway.jsonpath.JsonPath.read(mockMvc.perform(asAdmin(post("/api/admin/products/" + id + "/duplicate")))
+                    .andExpect(status().isCreated())
+                    .andExpect(header().string("Location", org.hamcrest.Matchers.startsWith("/api/admin/products/")))
+                    .andReturn().getResponse().getContentAsString(), "$.id");
+            org.assertj.core.api.Assertions.assertThat(copy).isNotEqualTo(id);
+
+            mockMvc.perform(asAdmin(get("/api/admin/products/" + copy)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.slug").value("navy-shirt-copy"))
+                    .andExpect(jsonPath("$.name").value("상품 (복제)"))
+                    .andExpect(jsonPath("$.status").value("DRAFT"))
+                    .andExpect(jsonPath("$.priceKrw").value(100000))
+                    .andExpect(jsonPath("$.manufacturer").value("레오네페리토"))
+                    .andExpect(jsonPath("$.images.length()").value(1))
+                    .andExpect(jsonPath("$.skus.length()").value(
+                            ((java.util.List<?>) com.jayway.jsonpath.JsonPath.read(mockMvc.perform(asAdmin(get("/api/admin/products/" + id)))
+                                    .andReturn().getResponse().getContentAsString(), "$.skus")).size()));
+            // 원본은 그대로 공개 중, 복제본은 공개 목록에 없다
+            mockMvc.perform(get("/api/products/navy-shirt")).andExpect(status().isOk());
+            mockMvc.perform(get("/api/products/navy-shirt-copy")).andExpect(status().isNotFound());
+
+            mockMvc.perform(asAdmin(post("/api/admin/products/" + id + "/duplicate"))).andExpect(status().isCreated());
+            org.assertj.core.api.Assertions.assertThat(products.existsBySlug("navy-shirt-copy-2")).isTrue();
+        }
+
+        @Test
+        @DisplayName("없는 상품은 404, 회원은 403")
+        void guards() throws Exception {
+            mockMvc.perform(asAdmin(post("/api/admin/products/" + java.util.UUID.randomUUID() + "/duplicate")))
+                    .andExpect(status().isNotFound());
+            mockMvc.perform(asMember(post("/api/admin/products/" + java.util.UUID.randomUUID() + "/duplicate")))
+                    .andExpect(status().isForbidden());
+        }
+    }
+
     private void attachImageAndPublish(String id, String slug, String mediaId) throws Exception {
         mockMvc.perform(asAdmin(put("/api/admin/products/" + id))
                         .contentType(MediaType.APPLICATION_JSON)

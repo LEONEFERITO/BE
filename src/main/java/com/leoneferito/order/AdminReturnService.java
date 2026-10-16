@@ -32,7 +32,11 @@ public class AdminReturnService {
     private final ShopOrderRepository orders;
     private final PaymentGateway gateway;
 
-    public AdminReturnService(ReturnRequestRepository returns, ShopOrderRepository orders, PaymentGateway gateway) {
+    private final org.springframework.context.ApplicationEventPublisher events;
+
+    public AdminReturnService(ReturnRequestRepository returns, ShopOrderRepository orders, PaymentGateway gateway,
+                              org.springframework.context.ApplicationEventPublisher events) {
+        this.events = events;
         this.returns = returns;
         this.orders = orders;
         this.gateway = gateway;
@@ -64,8 +68,10 @@ public class AdminReturnService {
 
     @Transactional
     public void approve(UUID actorId, UUID id, String note) {
-        findLocked(id).approve(actorId, blankToNull(note));
+        ReturnRequest r = findLocked(id);
+        r.approve(actorId, blankToNull(note));
         log.info("교환·반품 승인 returnId={} actorId={}", id, actorId);
+        events.publishEvent(new OrderNotifier.Notice(OrderNotifier.Kind.RETURN_APPROVED, r.getOrder().getOrderNumber(), id));
     }
 
     @Transactional
@@ -76,8 +82,10 @@ public class AdminReturnService {
 
     @Transactional
     public void reject(UUID actorId, UUID id, String reason) {
-        findLocked(id).reject(actorId, reason.trim());
+        ReturnRequest r = findLocked(id);
+        r.reject(actorId, reason.trim());
         log.info("교환·반품 거절 returnId={} actorId={}", id, actorId);
+        events.publishEvent(new OrderNotifier.Notice(OrderNotifier.Kind.RETURN_REJECTED, r.getOrder().getOrderNumber(), id));
     }
 
     /**
@@ -98,12 +106,15 @@ public class AdminReturnService {
         }
         r.completeReturn(actorId, refundAmount);
         log.info("반품 완료 returnId={} refund={} actorId={}", id, refundAmount, actorId);
+        events.publishEvent(new OrderNotifier.Notice(OrderNotifier.Kind.RETURN_COMPLETED, order.getOrderNumber(), id));
     }
 
     @Transactional
     public void completeExchange(UUID actorId, UUID id, String courier, String trackingNumber) {
-        findLocked(id).completeExchange(actorId, courier.trim(), trackingNumber.trim());
+        ReturnRequest r = findLocked(id);
+        r.completeExchange(actorId, courier.trim(), trackingNumber.trim());
         log.info("교환 재발송 returnId={} actorId={}", id, actorId);
+        events.publishEvent(new OrderNotifier.Notice(OrderNotifier.Kind.EXCHANGE_SHIPPED, r.getOrder().getOrderNumber(), id));
     }
 
     private ReturnRequest find(UUID id) {

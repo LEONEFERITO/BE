@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -160,6 +161,9 @@ class OrderApiTest {
 
     @Autowired
     private MediaAssetRepository mediaAssets;
+
+    @Autowired
+    private TestMailConfiguration.RecordingMailer mailer;
 
     private UUID buyerId;
     private Cookie buyer;
@@ -871,6 +875,88 @@ class OrderApiTest {
             send(buyer, post("/api/returns/" + id + "/withdraw"), null).andExpect(status().isOk());
             requestWithPhotos(no, item, mine).andExpect(status().isBadRequest());
             requestWithPhotos(no, item, uploadPhoto(buyer, png())).andExpect(status().isCreated());
+        }
+
+        @Test
+        @DisplayName("증빙 사진은 비공개(V34) — 주인과 관리자만 /api/returns/photos/{id} 로 보고, 남 · 비로그인 · /media/** 로는 못 본다")
+        void photosArePrivate() throws Exception {
+            String photoId = uploadPhoto(buyer, png());
+            String url = "/api/returns/photos/" + photoId;
+            String key = jdbc.queryForObject(
+                    "SELECT a.storage_key FROM media_asset a JOIN return_photo p ON p.media_id = a.id WHERE p.id = ?::uuid",
+                    String.class, photoId);
+            assertThat(jdbc.queryForObject("SELECT private FROM media_asset WHERE storage_key = ?", Boolean.class, key)).isTrue();
+
+            mockMvc.perform(get(url).cookie(buyer)).andExpect(status().isOk())
+                    .andExpect(header().string("Content-Type", "image/png"))
+                    .andExpect(header().string("X-Content-Type-Options", "nosniff"));
+            mockMvc.perform(get(url).cookie(admin)).andExpect(status().isOk());
+            mockMvc.perform(get(url).cookie(login(mockMvc, OTHER, PASSWORD))).andExpect(status().isNotFound());
+            mockMvc.perform(get(url)).andExpect(status().isUnauthorized());
+            mockMvc.perform(get("/media/" + key)).andExpect(status().isNotFound());
+        }
+
+        @Test
+        @DisplayName("교환·반품 진행 메일 — 승인 · 거절 · 반품 완료(환불) · 교환 재발송 때 손님에게 간다")
+        void progressMails() throws Exception {
+            String no = deliveredOrder(admin);
+            String item = firstItemId(no);
+            String ret = returnId(requestReturn(no, "RETURN", "DEFECT", item, 1, null));
+            mailer.clear();
+
+            send(admin, post("/api/admin/returns/" + ret + "/approve"), "{\"note\":\"기사님이 이틀 안에 찾아갑니다\"}")
+                    .andExpect(status().isNoContent());
+            assertThat(mailer.sent()).singleElement().satisfies(m -> {
+                assertThat(m.to()).isEqualTo(BUYER);
+                assertThat(m.subject()).isEqualTo("[LEONE FERITO] 반품 신청이 승인되었습니다");
+                assertThat(m.text()).contains("기사님이 이틀 안에 찾아갑니다", "주문번호  " + no);
+            });
+
+            mailer.clear();
+            send(admin, post("/api/admin/returns/" + ret + "/collected"), "{}").andExpect(status().isNoContent());
+            send(admin, post("/api/admin/returns/" + ret + "/refund"), "{\"refundAmountKrw\":290000}").andExpect(status().isNoContent());
+            assertThat(mailer.sent()).singleElement().satisfies(m -> {
+                assertThat(m.subject()).isEqualTo("[LEONE FERITO] 반품이 완료되었습니다");
+                assertThat(m.text()).contains("290,000원");
+            });
+
+            // 거절은 별도 신청으로
+            String no2 = deliveredOrder(admin);
+            String ret2 = returnId(requestReturn(no2, "EXCHANGE", "SIZE", firstItemId(no2), 1, "95"));
+            mailer.clear();
+            send(admin, post("/api/admin/returns/" + ret2 + "/reject"), "{\"reason\":\"착용 흔적이 있습니다\"}").andExpect(status().isNoContent());
+            assertThat(mailer.sent()).singleElement().satisfies(m -> {
+                assertThat(m.subject()).isEqualTo("[LEONE FERITO] 교환 신청이 거절되었습니다");
+                assertThat(m.text()).contains("착용 흔적이 있습니다");
+            });
+        }
+
+        @Test
+        @DisplayName("관리자 접속 기록(V33) — 관리자가 본 주문 · 처리가 경로와 함께 남고, 조회는 최고 관리자만")
+        void adminAccessIsLogged() throws Exception {
+            String no = deliveredOrder(admin);
+            long before = jdbc.queryForObject("SELECT count(*) FROM admin_access_log", Long.class);
+            mockMvc.perform(get("/api/admin/orders/" + no).cookie(admin).header("X-Forwarded-For", "203.0.113.9, 10.0.0.1"))
+                    .andExpect(status().isOk());
+            var rows = jdbc.queryForList("SELECT actor_email, method, path, status, ip FROM admin_access_log ORDER BY id DESC LIMIT 1");
+            assertThat(rows).singleElement().satisfies(r -> {
+                assertThat(r.get("actor_email")).isEqualTo(ADMIN);
+                assertThat(r.get("method")).isEqualTo("GET");
+                assertThat(r.get("path")).isEqualTo("/api/admin/orders/" + no);
+                assertThat(((Number) r.get("status")).intValue()).isEqualTo(200);
+                assertThat(r.get("ip")).isEqualTo("203.0.113.9");
+            });
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM admin_access_log", Long.class)).isGreaterThan(before);
+
+            // 일반 관리자는 기록을 볼 수 없다(403). 최고 관리자는 본다
+            mockMvc.perform(get("/api/admin/access-logs").cookie(admin)).andExpect(status().isForbidden());
+            authService.signup("owner@example.com", PASSWORD, "대표", null);
+            adminMembers.createOrPromoteByCommand("owner@example.com", "대표", MemberRole.SUPER_ADMIN);
+            Cookie owner = login(mockMvc, "owner@example.com", PASSWORD);
+            mockMvc.perform(get("/api/admin/access-logs").cookie(owner).param("q", no))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.items[0].actorEmail").value(ADMIN))
+                    .andExpect(jsonPath("$.items[0].path").value("/api/admin/orders/" + no));
         }
 
         @Test

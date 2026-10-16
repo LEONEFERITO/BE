@@ -95,6 +95,10 @@ public class MediaController {
         String key = extractKey(request.getRequestURI());
         MediaAsset asset = assets.findByStorageKey(key)
                 .orElseThrow(() -> new ResourceNotFoundException("미디어 없음: key=" + key));
+        if (asset.isPrivate()) {
+            // 비공개(증빙 사진)는 여기로 못 본다 — 403 이 아니라 404: 주소의 존재를 알리지 않는다
+            throw new ResourceNotFoundException("비공개 미디어: key=" + key);
+        }
 
         Path path = storage.read(key);
 
