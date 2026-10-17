@@ -40,8 +40,12 @@ public class HeroBanner {
         VIDEO
     }
 
-    /** 배너 문구. 비운 줄은 그리지 않는다 — 상품 배너는 비우면 상품 이름 · 가격이 나간다. */
-    public record Text(String eyebrow, String title, String subtitle, String ctaLabel, String ctaUrl) {
+    /**
+     * 배너 문구. 비운 줄은 그리지 않는다 — 상품 배너는 비우면 상품 이름 · 가격이 나간다.
+     * {@code ctaEnabled} 가 false 면 버튼이 안 나간다(V35) — 글자 · 주소는 보관만 한다.
+     */
+    public record Text(String eyebrow, String title, String subtitle, String ctaLabel, String ctaUrl,
+                       boolean ctaEnabled) {
     }
 
     /** 사진 한 장과 설명. 사진이 없으면 media 가 null. */
@@ -73,6 +77,10 @@ public class HeroBanner {
 
     @Column(name = "cta_url", nullable = false)
     private String ctaUrl;
+
+    /** 버튼을 내보내는가 (V35). 끄면 글자 · 주소는 남고 화면에서만 빠진다. */
+    @Column(name = "cta_enabled", nullable = false)
+    private boolean ctaEnabled = true;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "figure_media_id")
@@ -154,6 +162,7 @@ public class HeroBanner {
         this.subtitle = clean(text.subtitle());
         this.ctaLabel = clean(text.ctaLabel());
         this.ctaUrl = clean(text.ctaUrl());
+        this.ctaEnabled = text.ctaEnabled();
         this.figure = custom || image ? figure.media() : null;
         this.figureAlt = custom || image ? clean(figure.alt()) : "";
         this.frameLeft = custom ? frameLeft.media() : null;
@@ -215,6 +224,10 @@ public class HeroBanner {
 
     public String getCtaUrl() {
         return ctaUrl;
+    }
+
+    public boolean isCtaEnabled() {
+        return ctaEnabled;
     }
 
     public MediaAsset getFigure() {

@@ -391,6 +391,29 @@ class SiteImageApiTest {
                 .andExpect(jsonPath("$.frameLeft.alt").value("남으면 안 됨"));
     }
 
+    @Test
+    @DisplayName("버튼 사용(V35) — 안 보내면 켠 것, 끄면 손님 · 관리자 응답 모두 false 이고 글자 · 주소는 남는다")
+    void ctaEnabled() throws Exception {
+        String fig = image("fig").getId().toString();
+        // 예전 관리자 화면처럼 ctaEnabled 없이 보내도 켜져 있다
+        String id = create(banner("CUSTOM", null, fig, "/category/jacket/", true));
+        mockMvc.perform(get("/api/hero-banners"))
+                .andExpect(jsonPath("$[0].ctaEnabled").value(true));
+
+        String off = banner("CUSTOM", null, fig, "/category/jacket/", true)
+                .replace("\"visible\":true", "\"ctaEnabled\":false,\"visible\":true");
+        mockMvc.perform(csrf(mockMvc, put(BANNERS + "/" + id), admin).contentType(MediaType.APPLICATION_JSON)
+                        .content(off))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ctaEnabled").value(false))
+                // 끈 뒤에도 글자 · 주소는 보관된다 — 다시 켜면 그대로 돌아온다
+                .andExpect(jsonPath("$.ctaLabel").value("보러 가기"))
+                .andExpect(jsonPath("$.ctaUrl").value("/category/jacket/"));
+        mockMvc.perform(get("/api/hero-banners"))
+                .andExpect(jsonPath("$[0].ctaEnabled").value(false))
+                .andExpect(jsonPath("$[0].ctaUrl").value("/category/jacket/"));
+    }
+
     private MediaAsset video(String name) {
         return mediaAssets.save(new MediaAsset(UUID.randomUUID(), name + ".mp4", ImageFormat.MP4,
                 4_000_000L, null, null, "test/" + UUID.randomUUID() + ".mp4"));

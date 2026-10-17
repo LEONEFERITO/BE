@@ -105,6 +105,7 @@ public class SiteImageController {
      * 상품 배너인데 상품이 없거나, 직접 올리기인데 인물 사진이 없거나, 이미지 한 장인데 큰 사진이 없으면 400 — DB 까지 가지 않는다.
      * 이미지 한 장은 큰 사진을 figure 로, 휴대폰용 세로 사진(선택)을 mobile 로 받는다.
      * 영상(V29)은 PC 영상을 figure 로, 휴대폰 영상(선택)을 mobile 로, 첫 장면 사진(선택)을 poster · mobilePoster 로 받는다.
+     * {@code ctaEnabled}(V35) 를 안 보내면 켠 것으로 본다 — 예전 관리자 화면이 보내는 요청이 그대로 통한다.
      */
     public record BannerInput(
             @NotNull HeroBanner.Kind kind,
@@ -114,6 +115,7 @@ public class SiteImageController {
             @Size(max = 80) String subtitle,
             @Size(max = 20) String ctaLabel,
             @Size(max = 300) @Pattern(regexp = "^$|^/(?!/)\\S*$|^https://\\S+$") String ctaUrl,
+            Boolean ctaEnabled,
             @Valid PhotoInput figure,
             @Valid PhotoInput frameLeft,
             @Valid PhotoInput frameRight,
@@ -134,7 +136,7 @@ public class SiteImageController {
 
         SiteImageService.BannerChange toChange() {
             return new SiteImageService.BannerChange(kind, productId,
-                    new HeroBanner.Text(eyebrow, title, subtitle, ctaLabel, ctaUrl),
+                    new HeroBanner.Text(eyebrow, title, subtitle, ctaLabel, ctaUrl, ctaEnabled == null || ctaEnabled),
                     ref(figure), ref(frameLeft), ref(frameRight), ref(mobile), ref(poster), ref(mobilePoster),
                     visible);
         }
@@ -157,13 +159,13 @@ public class SiteImageController {
         }
     }
 
-    /** 영상 배너는 figure · mobile 이 영상 주소, poster · mobilePoster 가 첫 장면 사진이다. */
+    /** 영상 배너는 figure · mobile 이 영상 주소, poster · mobilePoster 가 첫 장면 사진이다. {@code ctaEnabled} 가 false 면 버튼 없음. */
     public record BannerView(HeroBanner.Kind kind, String productSlug, String eyebrow, String title, String subtitle,
-                             String ctaLabel, String ctaUrl, PhotoView figure, PhotoView frameLeft,
+                             String ctaLabel, String ctaUrl, boolean ctaEnabled, PhotoView figure, PhotoView frameLeft,
                              PhotoView frameRight, PhotoView mobile, PhotoView poster, PhotoView mobilePoster) {
         static BannerView of(HeroBanner b, MediaUrls urls) {
             return new BannerView(b.getKind(), b.getProduct() == null ? null : b.getProduct().getSlug(),
-                    b.getEyebrow(), b.getTitle(), b.getSubtitle(), b.getCtaLabel(), b.getCtaUrl(),
+                    b.getEyebrow(), b.getTitle(), b.getSubtitle(), b.getCtaLabel(), b.getCtaUrl(), b.isCtaEnabled(),
                     PhotoView.of(b.getFigure(), b.getFigureAlt(), urls),
                     PhotoView.of(b.getFrameLeft(), b.getFrameLeftAlt(), urls),
                     PhotoView.of(b.getFrameRight(), b.getFrameRightAlt(), urls),
@@ -183,6 +185,7 @@ public class SiteImageController {
     /** {@code shown} — 손님 화면에 실제로 나가는가(켜 두었고 상품 공개 중 · 인물 사진 있음). */
     public record AdminBannerView(UUID id, HeroBanner.Kind kind, UUID productId, String productSlug,
                                   String eyebrow, String title, String subtitle, String ctaLabel, String ctaUrl,
+                                  boolean ctaEnabled,
                                   AdminPhotoView figure, AdminPhotoView frameLeft, AdminPhotoView frameRight,
                                   AdminPhotoView mobile, AdminPhotoView poster, AdminPhotoView mobilePoster,
                                   boolean visible, boolean shown, Instant updatedAt) {
@@ -190,7 +193,7 @@ public class SiteImageController {
             return new AdminBannerView(b.getId(), b.getKind(),
                     b.getProduct() == null ? null : b.getProduct().getId(),
                     b.getProduct() == null ? null : b.getProduct().getSlug(),
-                    b.getEyebrow(), b.getTitle(), b.getSubtitle(), b.getCtaLabel(), b.getCtaUrl(),
+                    b.getEyebrow(), b.getTitle(), b.getSubtitle(), b.getCtaLabel(), b.getCtaUrl(), b.isCtaEnabled(),
                     AdminPhotoView.of(b.getFigure(), b.getFigureAlt(), urls),
                     AdminPhotoView.of(b.getFrameLeft(), b.getFrameLeftAlt(), urls),
                     AdminPhotoView.of(b.getFrameRight(), b.getFrameRightAlt(), urls),
