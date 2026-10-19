@@ -88,10 +88,11 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
 			"/api/auth/login",
 			"/api/auth/admin-login");
 
-	/** 요청 자체가 비용이다 — 계정을 만들거나 메일을 보낸다. */
+	/** 요청 자체가 비용이다 — 계정을 만들거나 메일을 보내거나, 이름 · 번호로 계정을 찾는다(훑기 방지). */
 	private static final Set<String> COSTLY_PATHS = Set.of(
 			"/api/auth/signup",
-			"/api/auth/password-reset/request");
+			"/api/auth/password-reset/request",
+			"/api/auth/find-email");
 
 	private final RateLimiter credentialLimiter;
 	private final RateLimiter costlyLimiter;

@@ -152,5 +152,11 @@ class AuthRateLimitApiTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isTooManyRequests());
+
+        // 아이디 찾기도 같은 구간 — 이름 · 번호를 바꿔 가며 훑는 것을 IP 단위로 끊는다
+        mockMvc.perform(MemberTestSupport.csrf(mockMvc, post("/api/auth/find-email"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"홍길동\",\"phone\":\"010-1234-5678\"}"))
+                .andExpect(status().isTooManyRequests());
     }
 }

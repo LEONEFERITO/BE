@@ -1,6 +1,7 @@
 package com.leoneferito.member;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
@@ -46,4 +47,18 @@ public interface MemberRepository extends JpaRepository<Member, UUID> {
             """)
     Page<Member> search(@Param("q") String q, @Param("digits") String digits,
                         @Param("statuses") Collection<MemberStatus> statuses, Pageable pageable);
+
+    /**
+     * 아이디 찾기 ({@code FindEmailService}) — 이용 중인 일반 회원 중 이름(소문자 · 앞뒤 공백 없이)과
+     * 전화번호(숫자만, 하이픈 무시)가 같은 사람. 먼저 가입한 계정부터.
+     */
+    @Query("""
+            SELECT m FROM Member m
+            WHERE m.status = com.leoneferito.member.MemberStatus.ACTIVE
+              AND m.role = com.leoneferito.member.MemberRole.MEMBER
+              AND lower(trim(m.name)) = :name
+              AND replace(coalesce(m.phone, ''), '-', '') = :digits
+            ORDER BY m.createdAt ASC
+            """)
+    List<Member> findForEmailLookup(@Param("name") String name, @Param("digits") String digits, Pageable pageable);
 }

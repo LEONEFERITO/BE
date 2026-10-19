@@ -1,6 +1,7 @@
 package com.leoneferito.auth.api;
 
 import com.leoneferito.auth.AuthService;
+import com.leoneferito.auth.FindEmailService;
 import com.leoneferito.auth.MemberPrincipal;
 import com.leoneferito.auth.PasswordResetService;
 import com.leoneferito.auth.social.SocialLoginConfig;
@@ -40,13 +41,16 @@ public class AuthController {
     private final SecurityContextRepository contextRepository;
     private final SocialLoginConfig.Enabled social;
     private final PasswordResetService passwordReset;
+    private final FindEmailService findEmail;
 
     public AuthController(AuthService authService, SecurityContextRepository contextRepository,
-                          SocialLoginConfig.Enabled social, PasswordResetService passwordReset) {
+                          SocialLoginConfig.Enabled social, PasswordResetService passwordReset,
+                          FindEmailService findEmail) {
         this.authService = authService;
         this.contextRepository = contextRepository;
         this.social = social;
         this.passwordReset = passwordReset;
+        this.findEmail = findEmail;
     }
 
     /**
@@ -151,6 +155,18 @@ public class AuthController {
         }
         SecurityContextHolder.clearContext();
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * 아이디 찾기 — 이름 · 휴대폰 번호가 같은 계정의 <b>가린</b> 이메일과 가입 방법. 없으면 빈 목록(200).
+     * 주소에 개인정보가 남지 않게 POST 로 받는다. 요청 제한은 비밀번호 찾기와 같은 구간({@code AuthRateLimitFilter}).
+     */
+    @PostMapping("/find-email")
+    public FindEmailResponse findEmail(@Valid @RequestBody AuthRequests.FindEmail request) {
+        return new FindEmailResponse(findEmail.find(request.name(), request.phone()));
+    }
+
+    public record FindEmailResponse(List<FindEmailService.Account> accounts) {
     }
 
     /**
