@@ -313,6 +313,14 @@ class SiteImageApiTest {
         mockMvc.perform(csrf(mockMvc, post(BANNERS), admin).contentType(MediaType.APPLICATION_JSON)
                         .content(banner("CUSTOM", null, fig, "", true).replace("가을 아우터", "가".repeat(61))))
                 .andExpect(status().isBadRequest());
+        // 제목 아래 줄은 150자까지(V36 — 디자이너 세 줄 설명이 122자), 151자 → 400
+        mockMvc.perform(csrf(mockMvc, post(BANNERS), admin).contentType(MediaType.APPLICATION_JSON)
+                        .content(banner("CUSTOM", null, fig, "", true).replace("새 시즌", "설".repeat(150))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.subtitle").value("설".repeat(150)));
+        mockMvc.perform(csrf(mockMvc, post(BANNERS), admin).contentType(MediaType.APPLICATION_JSON)
+                        .content(banner("CUSTOM", null, fig, "", true).replace("새 시즌", "설".repeat(151))))
+                .andExpect(status().isBadRequest());
 
         // 상품 배너로 바꾸면 사진은 걷힌다
         Product shirt = product("hero-shirt", true);

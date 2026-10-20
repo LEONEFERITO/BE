@@ -112,7 +112,7 @@ public class SiteImageController {
             UUID productId,
             @Size(max = 40) String eyebrow,
             @Size(max = 60) String title,
-            @Size(max = 80) String subtitle,
+            @Size(max = 150) String subtitle,
             @Size(max = 20) String ctaLabel,
             @Size(max = 300) @Pattern(regexp = "^$|^/(?!/)\\S*$|^https://\\S+$") String ctaUrl,
             Boolean ctaEnabled,
