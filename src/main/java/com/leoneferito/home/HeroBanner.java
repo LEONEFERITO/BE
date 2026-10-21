@@ -43,9 +43,10 @@ public class HeroBanner {
     /**
      * 배너 문구. 비운 줄은 그리지 않는다 — 상품 배너는 비우면 상품 이름 · 가격이 나간다.
      * {@code ctaEnabled} 가 false 면 버튼이 안 나간다(V35) — 글자 · 주소는 보관만 한다.
+     * {@code eyebrowPx} · {@code titlePx} · {@code subtitlePx} 는 PC 글자 크기(V37) — null 이면 기본 크기.
      */
     public record Text(String eyebrow, String title, String subtitle, String ctaLabel, String ctaUrl,
-                       boolean ctaEnabled) {
+                       boolean ctaEnabled, Integer eyebrowPx, Integer titlePx, Integer subtitlePx) {
     }
 
     /** 사진 한 장과 설명. 사진이 없으면 media 가 null. */
@@ -81,6 +82,16 @@ public class HeroBanner {
     /** 버튼을 내보내는가 (V35). 끄면 글자 · 주소는 남고 화면에서만 빠진다. */
     @Column(name = "cta_enabled", nullable = false)
     private boolean ctaEnabled = true;
+
+    /** PC 글자 크기 px (V37). null 이면 디자이너 기준 크기. 휴대폰은 늘 자동 크기. */
+    @Column(name = "eyebrow_px")
+    private Integer eyebrowPx;
+
+    @Column(name = "title_px")
+    private Integer titlePx;
+
+    @Column(name = "subtitle_px")
+    private Integer subtitlePx;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "figure_media_id")
@@ -163,6 +174,9 @@ public class HeroBanner {
         this.ctaLabel = clean(text.ctaLabel());
         this.ctaUrl = clean(text.ctaUrl());
         this.ctaEnabled = text.ctaEnabled();
+        this.eyebrowPx = text.eyebrowPx();
+        this.titlePx = text.titlePx();
+        this.subtitlePx = text.subtitlePx();
         this.figure = custom || image ? figure.media() : null;
         this.figureAlt = custom || image ? clean(figure.alt()) : "";
         this.frameLeft = custom ? frameLeft.media() : null;
@@ -228,6 +242,18 @@ public class HeroBanner {
 
     public boolean isCtaEnabled() {
         return ctaEnabled;
+    }
+
+    public Integer getEyebrowPx() {
+        return eyebrowPx;
+    }
+
+    public Integer getTitlePx() {
+        return titlePx;
+    }
+
+    public Integer getSubtitlePx() {
+        return subtitlePx;
     }
 
     public MediaAsset getFigure() {

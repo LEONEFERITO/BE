@@ -422,6 +422,32 @@ class SiteImageApiTest {
                 .andExpect(jsonPath("$[0].ctaUrl").value("/category/jacket/"));
     }
 
+    @Test
+    @DisplayName("글자 크기(V37) — 안 보내면 null(기본 크기), 보내면 손님 · 관리자 응답에 그대로, 범위 밖이면 400")
+    void textSize() throws Exception {
+        String fig = image("fig").getId().toString();
+        String id = create(banner("CUSTOM", null, fig, "/category/jacket/", true));
+        mockMvc.perform(get("/api/hero-banners"))
+                .andExpect(jsonPath("$[0].titlePx").doesNotExist());
+
+        String sized = banner("CUSTOM", null, fig, "/category/jacket/", true)
+                .replace("\"visible\":true", "\"eyebrowPx\":16,\"titlePx\":96,\"subtitlePx\":18,\"visible\":true");
+        mockMvc.perform(csrf(mockMvc, put(BANNERS + "/" + id), admin).contentType(MediaType.APPLICATION_JSON)
+                        .content(sized))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.eyebrowPx").value(16))
+                .andExpect(jsonPath("$.titlePx").value(96))
+                .andExpect(jsonPath("$.subtitlePx").value(18));
+        mockMvc.perform(get("/api/hero-banners"))
+                .andExpect(jsonPath("$[0].titlePx").value(96));
+
+        String huge = banner("CUSTOM", null, fig, "/category/jacket/", true)
+                .replace("\"visible\":true", "\"titlePx\":500,\"visible\":true");
+        mockMvc.perform(csrf(mockMvc, put(BANNERS + "/" + id), admin).contentType(MediaType.APPLICATION_JSON)
+                        .content(huge))
+                .andExpect(status().isBadRequest());
+    }
+
     private MediaAsset video(String name) {
         return mediaAssets.save(new MediaAsset(UUID.randomUUID(), name + ".mp4", ImageFormat.MP4,
                 4_000_000L, null, null, "test/" + UUID.randomUUID() + ".mp4"));
