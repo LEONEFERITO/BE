@@ -91,6 +91,9 @@ services:
       # 브라우저가 부르는 API 주소와 사이트 주소. 빌드 결과물에 박힌다(공개 값).
       NEXT_PUBLIC_API_BASE: https://${API_DOMAIN}
       NEXT_PUBLIC_SITE_URL: https://${SITE_DOMAIN}
+      # 검색 사이트 소유 확인 코드(공개 값, <meta> 로 나간다). 비우면 태그를 안 낸다 — 2026-10-26 SEO
+      NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION: ${GOOGLE_SITE_VERIFICATION:-}
+      NEXT_PUBLIC_NAVER_SITE_VERIFICATION: ${NAVER_SITE_VERIFICATION:-}
       # 빌드할 때 상품 · 사진을 받아 오는 주소 — 바깥 도메인을 돌지 않고 내부로 바로 간다.
       # 그래서 DNS · 인증서가 준비되기 전에도 첫 빌드가 된다.
       API_BUILD_BASE: http://api:8080
@@ -123,7 +126,8 @@ services:
       API_DOMAIN: ${API_DOMAIN:?API_DOMAIN 이 .env 에 없다}
       SITE_DOMAIN: ${SITE_DOMAIN:?SITE_DOMAIN 이 .env 에 없다}
       SITE_ADDRESSES: ${SITE_ADDRESSES:?SITE_ADDRESSES 가 .env 에 없다}
-      SITE_ROBOTS: ${SITE_ROBOTS:-noindex, nofollow}
+      # 2026-10-26 검색 노출 허용 — 기본값을 all 로(오픈 전에는 noindex, nofollow 였다). .env 에 적힌 값이 있으면 그게 이긴다
+      SITE_ROBOTS: ${SITE_ROBOTS:-all}
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       # 빌더가 만든 손님 화면. Caddy 는 읽기만 한다.

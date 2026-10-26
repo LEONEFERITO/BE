@@ -35,7 +35,7 @@
 		X-Content-Type-Options nosniff
 		Referrer-Policy strict-origin-when-cross-origin
 		X-Frame-Options SAMEORIGIN
-		# 오픈 전 미리보기 주소가 검색에 잡히지 않게. 오픈 날 .env 의 SITE_ROBOTS 를 all 로 바꾼다.
+		# 검색 노출 헤더. 기본 all(2026-10-26 허용) — 오픈 전처럼 막으려면 .env 의 SITE_ROBOTS 를 "noindex, nofollow" 로.
 		X-Robots-Tag "{$SITE_ROBOTS}"
 		# 1년 HTTPS 고정. 정식 도메인으로 오픈한 뒤에 켠다 — 한 번 켜면 http 로는 못 돌아간다.
 		# Strict-Transport-Security "max-age=31536000"
