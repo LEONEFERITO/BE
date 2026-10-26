@@ -3,7 +3,7 @@ package com.leoneferito.home;
 /**
  * 사이트 사진 칸 — 손님 화면에서 상품 사진이 아닌 사진이 놓이는 자리.
  *
- * <p>값을 늘리면 {@code site_image.slot} 의 CHECK 제약(지금은 V24)과 행, FE 의 {@code SiteImageSlot} 도 같이 고쳐야 한다.
+ * <p>값을 늘리면 {@code site_image.slot} 의 CHECK 제약(지금은 V38)과 행, FE 의 {@code SiteImageSlot} 도 같이 고쳐야 한다.
  */
 public enum SiteImageSlot {
     /** 메인 OFFLINE SHOP 구간의 사진. */
@@ -19,6 +19,8 @@ public enum SiteImageSlot {
     /** 룩북 컬렉션 컷 — 레오네 둘 · 페리토 둘 (V23). */
     LOOKBOOK_LEONE_1, LOOKBOOK_LEONE_2, LOOKBOOK_FERITO_1, LOOKBOOK_FERITO_2,
     /** 브랜드 페이지 — 히어로 사진 · 사진 구간 셋 · 첫인상 배경 (V23). */
-    BRAND_HERO, BRAND_PHOTO_1, BRAND_PHOTO_2, BRAND_PHOTO_3, BRAND_IMPRESSION
+    BRAND_HERO, BRAND_PHOTO_1, BRAND_PHOTO_2, BRAND_PHOTO_3, BRAND_IMPRESSION,
+    /** 로그인 · 회원가입 카드의 와인 패널 배경 (V38). 비면 사진 없이 그라데이션만. */
+    AUTH_PANEL
     // V24 의 HERO_* 세 칸은 V25 에서 걷었다 — 배너 사진은 배너(hero_banner)가 직접 가진다
 }

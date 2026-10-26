@@ -91,15 +91,16 @@ class SiteImageApiTest {
     }
 
     @Test
-    @DisplayName("V20 · V22 · V23 이 심은 칸(매장 1 + 라인 10 + 메인 2 + 룩북 4 + 브랜드 5)이 사진 없이 로그인 없이 읽힌다. V24 배너 칸은 V25 가 걷었다")
+    @DisplayName("V20 · V22 · V23 · V38 이 심은 칸(매장 1 + 라인 10 + 메인 2 + 룩북 4 + 브랜드 5 + 로그인 패널 1)이 사진 없이 로그인 없이 읽힌다. V24 배너 칸은 V25 가 걷었다")
     void seededAndPublic() throws Exception {
         mockMvc.perform(get("/api/site-images"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(22))
+                .andExpect(jsonPath("$.length()").value(23))
                 .andExpect(jsonPath("$[0].slot").value("OFFLINE_SHOP"))
                 .andExpect(jsonPath("$[1].slot").value("LINE_LEONE_1"))
                 .andExpect(jsonPath("$[10].slot").value("LINE_FERITO_5"))
                 .andExpect(jsonPath("$[21].slot").value("BRAND_IMPRESSION"))
+                .andExpect(jsonPath("$[22].slot").value("AUTH_PANEL"))
                 .andExpect(jsonPath("$[0].imageUrl").doesNotExist())
                 .andExpect(jsonPath("$[0].alt").value(""));
     }
