@@ -38,6 +38,8 @@ dependencies {
 	// 테스트(AdminMemberApiTest)가 SessionTerminator 빈을 못 만들면서 드러났다.
 	implementation 'org.springframework.boot:spring-boot-starter-session-jdbc'
 	implementation 'org.flywaydb:flyway-database-postgresql'
+	// 상품 일괄 등록에서 엑셀(.xlsx)을 그대로 읽는다 (2026-10-27 — 전에는 CSV 로 저장해 올려야 했다)
+	implementation 'org.apache.poi:poi-ooxml:5.4.1'
 	developmentOnly 'org.springframework.boot:spring-boot-devtools'
 	runtimeOnly 'org.postgresql:postgresql'
 	annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'

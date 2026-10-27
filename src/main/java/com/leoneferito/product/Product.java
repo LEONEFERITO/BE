@@ -158,6 +158,27 @@ public class Product {
     @Column(name = "instagram_url")
     private String instagramUrl;
 
+    /*
+     * 관리자 전용 정보 (V39, 2026-10-27 고객 일괄 등록 양식). 손님 응답에는 넣지 않는다 — 원가 · 공급처가 밖으로 나가면 안 된다.
+     */
+    @Column(name = "admin_name")
+    private String adminName;
+
+    @Column(name = "fabric_supplier")
+    private String fabricSupplier;
+
+    @Column(name = "fabric_collection")
+    private String fabricCollection;
+
+    @Column(name = "fabric_code")
+    private String fabricCode;
+
+    @Column
+    private String workshop;
+
+    @Column(name = "cost_krw")
+    private Long costKrw;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private ProductStatus status = ProductStatus.DRAFT;
@@ -466,6 +487,41 @@ public class Product {
 
     public void setInstagramUrl(String instagramUrl) {
         this.instagramUrl = instagramUrl;
+    }
+
+    public String getAdminName() {
+        return adminName;
+    }
+
+    public String getFabricSupplier() {
+        return fabricSupplier;
+    }
+
+    public String getFabricCollection() {
+        return fabricCollection;
+    }
+
+    public String getFabricCode() {
+        return fabricCode;
+    }
+
+    public String getWorkshop() {
+        return workshop;
+    }
+
+    public Long getCostKrw() {
+        return costKrw;
+    }
+
+    /** 관리자 전용 정보 여섯 칸은 같이 저장된다(V39). */
+    public void setInternal(String adminName, String fabricSupplier, String fabricCollection, String fabricCode,
+                            String workshop, Long costKrw) {
+        this.adminName = adminName;
+        this.fabricSupplier = fabricSupplier;
+        this.fabricCollection = fabricCollection;
+        this.fabricCode = fabricCode;
+        this.workshop = workshop;
+        this.costKrw = costKrw;
     }
 
     public Short getLeadTimeDays() {

@@ -54,7 +54,13 @@ public final class AdminProductResponse {
             String sizeChartAlt,
             String instagramUrl,
             List<Image> images,
-            List<Sku> skus) {
+            List<Sku> skus,
+            /** 관리자 전용 정보 (V39) */
+            Internal internal) {
+    }
+
+    public record Internal(String adminName, String fabricSupplier, String fabricCollection, String fabricCode,
+                           String workshop, Long costKrw) {
     }
     public record Image(UUID mediaId, String url, String kind, String alt, int sortOrder) {
     }

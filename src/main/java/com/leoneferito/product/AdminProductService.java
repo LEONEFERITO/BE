@@ -134,6 +134,8 @@ public class AdminProductService {
         copy.setModel(src.getModelHeightCm(), src.getModelWeightKg(), src.getModelSize());
         copy.setLeadTimeDays(src.getLeadTimeDays());
         copy.setInstagramUrl(src.getInstagramUrl());
+        copy.setInternal(src.getAdminName(), src.getFabricSupplier(), src.getFabricCollection(), src.getFabricCode(),
+                src.getWorkshop(), src.getCostKrw());
         copy.setSizeChart(src.getSizeChart(), src.getSizeChartAlt());
         copy.setDisplayOrder(0);
         for (ProductImage i : src.getImages()) {
@@ -237,6 +239,11 @@ public class AdminProductService {
         product.setModel(request.modelHeightCm(), request.modelWeightKg(), request.modelSize());
         product.setLeadTimeDays(request.leadTimeDays());
         product.setInstagramUrl(request.instagramUrl());
+        AdminProductRequests.Internal in = request.internal();
+        if (in != null) {
+            product.setInternal(blank(in.adminName()), blank(in.fabricSupplier()), blank(in.fabricCollection()),
+                    blank(in.fabricCode()), blank(in.workshop()), in.costKrw());
+        }
         product.setDisplayOrder(request.displayOrder() == null ? 0 : request.displayOrder());
 
         /*
@@ -339,5 +346,10 @@ public class AdminProductService {
         public StyleMismatchException() {
             super("세부 분류가 제품 분류와 맞지 않습니다.");
         }
+    }
+
+    /** 빈 칸 · 공백만 있는 칸은 null 로 — "없음" 을 한 가지로 저장한다. */
+    private static String blank(String s) {
+        return s == null || s.isBlank() ? null : s.trim();
     }
 }

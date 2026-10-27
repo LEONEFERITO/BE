@@ -139,13 +139,13 @@ public class AdminProductController {
     }
 
     /**
-     * 일괄 등록 (2026-10-16) — 엑셀에서 저장한 CSV 한 줄이 상품 하나, 전부 초안. 한 줄이라도 틀리면 아무것도 저장하지 않고
+     * 일괄 등록 (2026-10-16) — 엑셀(.xlsx, 2026-10-27~) 또는 CSV 한 줄이 상품 하나, 전부 초안. 한 줄이라도 틀리면 아무것도 저장하지 않고
      * 400 IMPORT_INVALID + 줄 · 칸 · 이유 목록(rowErrors).
      */
     @PostMapping("/import")
     public ImportResult importCsv(@org.springframework.web.bind.annotation.RequestParam("file")
                                   org.springframework.web.multipart.MultipartFile file) throws java.io.IOException {
-        return new ImportResult(importer.importCsv(file.getBytes()));
+        return new ImportResult(importer.importFile(file.getBytes()));
     }
 
     public record ImportResult(java.util.List<com.leoneferito.product.ProductImportService.Created> created) {

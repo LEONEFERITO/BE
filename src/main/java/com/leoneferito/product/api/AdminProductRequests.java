@@ -117,7 +117,9 @@ public final class AdminProductRequests {
             String instagramUrl,
 
             @Valid @Size(max = 40) List<Image> images,
-            @Valid List<Sku> skus) {
+            @Valid List<Sku> skus,
+            /** 관리자 전용 정보(V39). 안 보내면(null) 저장된 값을 그대로 둔다 — 예전 화면 · 다른 경로의 요청이 지우지 않게. */
+            @Valid Internal internal) {
 
         /**
          * 메인 사진(대표 · 착용 · 디테일 · 누끼)은 종류마다 한 장, 상세 이미지는 {@value ProductImageKind#STORY_MAX} 장까지.
@@ -155,6 +157,16 @@ public final class AdminProductRequests {
         public boolean isStyleFitting() {
             return category == null || ProductStyle.fits(style, category);
         }
+    }
+
+    /** 관리자 전용 상품 정보 (V39) — 손님에게 안 보인다. 길이는 DB 칸과 같다. */
+    public record Internal(
+            @Size(max = NAME_MAX * 2) String adminName,
+            @Size(max = NOTICE_MAX) String fabricSupplier,
+            @Size(max = NOTICE_MAX) String fabricCollection,
+            @Size(max = NOTICE_MAX) String fabricCode,
+            @Size(max = NOTICE_MAX) String workshop,
+            @jakarta.validation.constraints.PositiveOrZero Long costKrw) {
     }
 
     public record Image(

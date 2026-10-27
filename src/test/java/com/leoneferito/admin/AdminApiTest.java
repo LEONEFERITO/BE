@@ -1045,10 +1045,94 @@ class AdminApiTest {
         void headerAndGuard() throws Exception {
             upload("이름,가격\r\n셔츠,1000\r\n".getBytes(java.nio.charset.StandardCharsets.UTF_8))
                     .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.fieldErrors[0].field").value("1행 · 상품명"));
+                    .andExpect(jsonPath("$.fieldErrors[0].field").value("1행 · 판매용상품명"));
             mockMvc.perform(asMember(multipart("/api/admin/products/import")
                             .file(new MockMultipartFile("file", "p.csv", "text/csv", new byte[] {1}))))
                     .andExpect(status().isForbidden());
+        }
+        /** 고객 양식(2026-10-27)과 같은 머리줄의 엑셀 파일을 만든다 — 줄마다 칸 값 */
+        private byte[] xlsx(String[] head, String[]... rows) throws Exception {
+            try (org.apache.poi.xssf.usermodel.XSSFWorkbook wb = new org.apache.poi.xssf.usermodel.XSSFWorkbook();
+                 java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
+                org.apache.poi.ss.usermodel.Sheet sheet = wb.createSheet("Sheet1");
+                String[][] all = new String[rows.length + 1][];
+                all[0] = head;
+                System.arraycopy(rows, 0, all, 1, rows.length);
+                for (int r = 0; r < all.length; r++) {
+                    org.apache.poi.ss.usermodel.Row row = sheet.createRow(r);
+                    for (int c = 0; c < all[r].length; c++) {
+                        String v = all[r][c];
+                        if (v != null && v.matches("^[0-9]+$") && v.length() < 10) {
+                            row.createCell(c).setCellValue(Double.parseDouble(v)); // 엑셀의 숫자 칸
+                        } else {
+                            row.createCell(c).setCellValue(v == null ? "" : v);
+                        }
+                    }
+                }
+                wb.write(out);
+                return out.toByteArray();
+            }
+        }
+
+        private static final String[] CLIENT_HEAD = {"판매용상품명", "관리용상품명", "라인", "대분류", "소분류", "사이즈", "색상",
+                "원단공급사", "원단컬렉션", "원단품번", "공임처", "제조사", "판매가", "원가", "제작기간", "원산지", "한줄설명", "상세설명",
+                "소재", "세탁", "제조연월", "주소"};
+
+        @Test
+        @DisplayName("고객 최종 엑셀 양식(.xlsx, 22칸) 그대로 — 대분류 · 소분류 · 원산지 · 숫자 칸을 읽고, 관리자 전용 정보는 관리자 응답에만 나간다")
+        void clientXlsx() throws Exception {
+            byte[] file = xlsx(CLIENT_HEAD,
+                    new String[] {"스트레이트 트라우저", "ST-BK-2610", "레오네", "트라우저", "스트레이트", "30/32/34", "블랙 / 네이비",
+                            "비탈레 바르베리스", "21SS 캐노니코", "VB-1234", "성수 공방", "레오네페리토", "158000", "61000", "21",
+                            "대한민국", "곧게 떨어지는 선", "", "울 100%", "드라이클리닝", "2026년 10월", "xlsx-straight"});
+            String res = mockMvc.perform(asAdmin(multipart("/api/admin/products/import")
+                            .file(new MockMultipartFile("file", "brand.xlsx",
+                                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", file))))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.created.length()").value(1))
+                    .andReturn().getResponse().getContentAsString();
+            String id = com.jayway.jsonpath.JsonPath.read(res, "$.created[0].id");
+
+            mockMvc.perform(asAdmin(get("/api/admin/products/" + id)))
+                    .andExpect(jsonPath("$.name").value("스트레이트 트라우저"))
+                    .andExpect(jsonPath("$.category").value("TROUSERS"))
+                    .andExpect(jsonPath("$.style").value("STRAIGHT"))
+                    .andExpect(jsonPath("$.priceKrw").value(158000))
+                    .andExpect(jsonPath("$.leadTimeDays").value(21))
+                    .andExpect(jsonPath("$.color").value("블랙 / 네이비"))
+                    .andExpect(jsonPath("$.countryOfOrigin").value("대한민국"))
+                    .andExpect(jsonPath("$.skus.length()").value(3))
+                    .andExpect(jsonPath("$.internal.adminName").value("ST-BK-2610"))
+                    .andExpect(jsonPath("$.internal.fabricSupplier").value("비탈레 바르베리스"))
+                    .andExpect(jsonPath("$.internal.fabricCollection").value("21SS 캐노니코"))
+                    .andExpect(jsonPath("$.internal.fabricCode").value("VB-1234"))
+                    .andExpect(jsonPath("$.internal.workshop").value("성수 공방"))
+                    .andExpect(jsonPath("$.internal.costKrw").value(61000));
+
+            // 관리자 화면이 internal 없이 저장해도(예전 화면) 지워지지 않는다
+            mockMvc.perform(asAdmin(put("/api/admin/products/" + id))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(saveBody("xlsx-straight")))
+                    .andExpect(status().isNoContent());
+            mockMvc.perform(asAdmin(get("/api/admin/products/" + id)))
+                    .andExpect(jsonPath("$.internal.costKrw").value(61000));
+        }
+
+        @Test
+        @DisplayName("엑셀에서도 틀린 줄은 아무것도 저장하지 않고, 오류는 파일의 칸 이름(판매용상품명 · 대분류)으로 알려 준다")
+        void clientXlsxErrors() throws Exception {
+            byte[] file = xlsx(CLIENT_HEAD,
+                    new String[] {"", "", "페리토", "모자", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""});
+            mockMvc.perform(asAdmin(multipart("/api/admin/products/import")
+                            .file(new MockMultipartFile("file", "brand.xlsx", "application/octet-stream", file))))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.fieldErrors[?(@.field == '2행 · 판매용상품명')]").exists())
+                    .andExpect(jsonPath("$.fieldErrors[?(@.field == '2행 · 대분류')]").exists());
+            mockMvc.perform(asAdmin(multipart("/api/admin/products/import")
+                            .file(new MockMultipartFile("file", "broken.xlsx", "application/octet-stream",
+                                    new byte[] {'P', 'K', 3, 4, 0, 0}))))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("IMPORT_INVALID"));
         }
     }
 

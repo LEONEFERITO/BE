@@ -93,7 +93,9 @@ public class AdminProductQueryService {
                 p.getSkus().stream()
                         .sorted(Comparator.comparingInt(ProductSku::getSortOrder))
                         .map(this::toSku)
-                        .toList());
+                        .toList(),
+                new AdminProductResponse.Internal(p.getAdminName(), p.getFabricSupplier(), p.getFabricCollection(),
+                        p.getFabricCode(), p.getWorkshop(), p.getCostKrw()));
     }
 
     private AdminProductResponse.Sku toSku(ProductSku sku) {
