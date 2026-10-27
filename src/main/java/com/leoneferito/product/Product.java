@@ -124,6 +124,14 @@ public class Product {
     @Column(name = "lead_time_days")
     private Short leadTimeDays;
 
+    /** 제작 기간 최소(V40). 있으면 "최소~leadTimeDays일". 발송 예정 계산은 늘 leadTimeDays(최대). */
+    @Column(name = "lead_time_min_days")
+    private Short leadTimeMinDays;
+
+    /** 소분류 — 자유 태그, 관리자 전용(V40) */
+    @Column(name = "sub_category")
+    private String subCategory;
+
     /**
      * 상세 사이즈 차트 이미지.
      *
@@ -530,6 +538,24 @@ public class Product {
 
     public void setLeadTimeDays(Short leadTimeDays) {
         this.leadTimeDays = leadTimeDays;
+    }
+
+    public Short getLeadTimeMinDays() {
+        return leadTimeMinDays;
+    }
+
+    /** 최대와 같거나 크면 범위가 아니다 — null 로 둔다(한 값) */
+    public void setLeadTimeMinDays(Short leadTimeMinDays) {
+        this.leadTimeMinDays = leadTimeMinDays != null && leadTimeDays != null && leadTimeMinDays >= leadTimeDays
+                ? null : leadTimeMinDays;
+    }
+
+    public String getSubCategory() {
+        return subCategory;
+    }
+
+    public void setSubCategory(String subCategory) {
+        this.subCategory = subCategory;
     }
 
     public ProductStatus getStatus() {

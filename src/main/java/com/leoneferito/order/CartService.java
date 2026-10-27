@@ -129,6 +129,7 @@ public class CartService {
                 price,
                 available ? price * item.getQuantity() : 0,
                 p == null ? null : p.getLeadTimeDays(),
+                p == null ? null : p.getLeadTimeMinDays(),
                 available,
                 reason);
     }
@@ -147,6 +148,8 @@ public class CartService {
 
     public record Line(UUID id, String slug, String name, String imageUrl, String size, int quantity,
                        Long unitPriceKrw, long lineAmountKrw, Short leadTimeDays,
+                       /** 제작 기간 최소(V40) — 있으면 화면이 "최소~leadTimeDays일" */
+                       Short leadTimeMinDays,
                        boolean available, String unavailableReason) {
     }
 }

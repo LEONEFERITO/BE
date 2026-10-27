@@ -71,7 +71,9 @@ public final class ProductResponse {
             /** 상품정보제공고시 중 상품마다 다른 항목. 소재·세탁은 위 fabric·care. */
             Notice notice,
             List<Image> images,
-            List<Sku> skus) {
+            List<Sku> skus,
+            /** 제작 기간 최소 (V40). 있으면 화면은 "최소~leadTimeDays일" */
+            Short leadTimeMinDays) {
     }
 
     /**

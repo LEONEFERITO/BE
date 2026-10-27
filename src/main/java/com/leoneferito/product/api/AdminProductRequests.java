@@ -119,7 +119,15 @@ public final class AdminProductRequests {
             @Valid @Size(max = 40) List<Image> images,
             @Valid List<Sku> skus,
             /** 관리자 전용 정보(V39). 안 보내면(null) 저장된 값을 그대로 둔다 — 예전 화면 · 다른 경로의 요청이 지우지 않게. */
-            @Valid Internal internal) {
+            @Valid Internal internal,
+            /** 제작 기간 최소(V40). 있으면 "최소~leadTimeDays일" — leadTimeDays 가 최대다. 없으면 한 값 */
+            @Min(1) @Max(365) Short leadTimeMinDays) {
+
+        /** 범위는 최소가 최대보다 작아야 한다("18~14" 는 400). 같으면 한 값으로 저장한다. */
+        @AssertTrue(message = "제작 기간 최소가 최대보다 클 수 없습니다.")
+        public boolean isLeadTimeRangeValid() {
+            return leadTimeMinDays == null || leadTimeDays == null || leadTimeMinDays <= leadTimeDays;
+        }
 
         /**
          * 메인 사진(대표 · 착용 · 디테일 · 누끼)은 종류마다 한 장, 상세 이미지는 {@value ProductImageKind#STORY_MAX} 장까지.
@@ -166,7 +174,9 @@ public final class AdminProductRequests {
             @Size(max = NOTICE_MAX) String fabricCollection,
             @Size(max = NOTICE_MAX) String fabricCode,
             @Size(max = NOTICE_MAX) String workshop,
-            @jakarta.validation.constraints.PositiveOrZero Long costKrw) {
+            @jakarta.validation.constraints.PositiveOrZero Long costKrw,
+            /** 소분류 — 자유 태그(V40, 엑셀 양식) */
+            @Size(max = 40) String subCategory) {
     }
 
     public record Image(

@@ -115,7 +115,8 @@ public class ProductQueryService {
                 p.getSkus().stream()
                         .sorted(Comparator.comparingInt(ProductSku::getSortOrder))
                         .map(this::toSku)
-                        .toList());
+                        .toList(),
+                p.getLeadTimeMinDays());
     }
 
     /** 차트가 없으면 null 을 준다. 화면은 그 자리를 비우고 안내 문구를 띄운다. */

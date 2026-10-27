@@ -95,7 +95,8 @@ public class AdminProductQueryService {
                         .map(this::toSku)
                         .toList(),
                 new AdminProductResponse.Internal(p.getAdminName(), p.getFabricSupplier(), p.getFabricCollection(),
-                        p.getFabricCode(), p.getWorkshop(), p.getCostKrw()));
+                        p.getFabricCode(), p.getWorkshop(), p.getCostKrw(), p.getSubCategory()),
+                p.getLeadTimeMinDays());
     }
 
     private AdminProductResponse.Sku toSku(ProductSku sku) {

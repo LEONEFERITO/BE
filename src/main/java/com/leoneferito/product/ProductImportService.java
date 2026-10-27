@@ -52,7 +52,7 @@ public class ProductImportService {
      */
     enum Col {
         NAME("판매용상품명", true, "상품명"), ADMIN_NAME("관리용상품명", false), LINE("라인", true),
-        CATEGORY("대분류", true, "분류"), STYLE("소분류", false, "세부분류"), SIZES("사이즈", false), COLOR("색상", false),
+        CATEGORY("대분류", true, "분류"), SUB_CATEGORY("소분류", false), STYLE("세부분류", false), SIZES("사이즈", false), COLOR("색상", false),
         FABRIC_SUPPLIER("원단공급사", false), FABRIC_COLLECTION("원단컬렉션", false), FABRIC_CODE("원단품번", false),
         WORKSHOP("공임처", false), MANUFACTURER("제조사", false), PRICE("판매가", false), COST("원가", false),
         LEAD_TIME("제작기간", false), ORIGIN("원산지", false, "제조국"), SUMMARY("한줄설명", false),
@@ -75,7 +75,12 @@ public class ProductImportService {
             Map.entry("재킷", ProductCategory.JACKET), Map.entry("자켓", ProductCategory.JACKET),
             Map.entry("트라우저", ProductCategory.TROUSERS), Map.entry("바지", ProductCategory.TROUSERS),
             Map.entry("셔츠", ProductCategory.SHIRT), Map.entry("신발", ProductCategory.SHOES), Map.entry("구두", ProductCategory.SHOES),
-            Map.entry("액세서리", ProductCategory.ACCESSORIES), Map.entry("악세서리", ProductCategory.ACCESSORIES));
+            Map.entry("액세서리", ProductCategory.ACCESSORIES), Map.entry("악세서리", ProductCategory.ACCESSORIES),
+            // 영문 — 대소문자 · 단수 · 복수 (2026-10-27 대표님 예시 "Jacket")
+            Map.entry("suits", ProductCategory.SUIT), Map.entry("jackets", ProductCategory.JACKET),
+            Map.entry("blazer", ProductCategory.JACKET), Map.entry("pants", ProductCategory.TROUSERS),
+            Map.entry("slacks", ProductCategory.TROUSERS), Map.entry("shirts", ProductCategory.SHIRT),
+            Map.entry("footwear", ProductCategory.SHOES), Map.entry("accessory", ProductCategory.ACCESSORIES));
     private static final Map<String, ProductLine> LINE = Map.of("레오네", ProductLine.LEONE, "페리토", ProductLine.FERITO);
     private static final Map<String, ProductStyle> STYLE = Map.of(
             "레귤러", ProductStyle.REGULAR, "스트레이트", ProductStyle.STRAIGHT, "플레어", ProductStyle.FLARE,
@@ -117,6 +122,9 @@ public class ProductImportService {
         StringBuilder csv = new StringBuilder("\uFEFF");
         List<String> head = new ArrayList<>();
         for (Col c : Col.values()) {
+            if (c == Col.STYLE) {
+                continue; // 세부분류는 예전 양식 이름 — 읽기만 하고 새 양식에는 없다(소분류가 대신한다)
+            }
             head.add(c.label + (c.required ? "*" : "") + (c == Col.LEAD_TIME ? "(일)" : c == Col.SLUG ? "(비우면 자동)" : ""));
         }
         csv.append(String.join(",", head)).append("\r\n");
@@ -250,9 +258,27 @@ public class ProductImportService {
             errors.add(new RowError(rowNo, c.name(Col.LINE), "라인을 적어 주세요 (레오네 · 페리토)."));
         }
         ProductStyle style = c.pick(Col.STYLE, STYLE, ProductStyle.class);
+        // 소분류 — 자유 태그(2026-10-27). 기존 세부 핏 이름(스트레이트 · 로퍼 …)이고 대분류와 맞으면 핏으로도 쓴다. 틀려도 오류 아님
+        String subCategory = c.text(Col.SUB_CATEGORY, 40);
+        if (style == null && subCategory != null && category != null) {
+            ProductStyle guess = STYLE.get(subCategory.replaceAll("\\s", ""));
+            if (guess == null) {
+                for (ProductStyle s : ProductStyle.values()) {
+                    if (s.name().equalsIgnoreCase(subCategory.replaceAll("\\s", ""))) {
+                        guess = s;
+                    }
+                }
+            }
+            if (guess != null && ProductStyle.fits(guess, category)) {
+                style = guess;
+            }
+        }
         Long price = c.won(Col.PRICE);
         Long listPrice = c.won(Col.LIST_PRICE);
-        Long lead = c.number(Col.LEAD_TIME, 1, 365);
+        // 제작기간 — "14" 또는 범위 "14~18" · "14-18" (2026-10-27). 범위면 앞이 최소, 뒤가 최대(발송 예정은 최대로 계산)
+        Long[] leadRange = c.range(Col.LEAD_TIME, 1, 365);
+        Long lead = leadRange == null ? null : leadRange[1];
+        Long leadMin = leadRange == null ? null : leadRange[0];
 
         String slug = c.raw(Col.SLUG);
         if (slug == null) {
@@ -260,7 +286,7 @@ public class ProductImportService {
                 slug = "p-" + randomSuffix();
             } while (slugsInFile.contains(slug) || products.existsBySlug(slug));
         } else {
-            slug = slug.trim().toLowerCase(Locale.ROOT);
+            slug = slugify(slug);
             if (!slug.matches("^[a-z0-9]+(-[a-z0-9]+)*$") || slug.length() > 80) {
                 errors.add(new RowError(rowNo, c.name(Col.SLUG), "영문 소문자 · 숫자 · 하이픈만, 80자 이하로 적어 주세요 (예: oxford-shirt-white)."));
             } else if (slugsInFile.contains(slug)) {
@@ -300,7 +326,8 @@ public class ProductImportService {
                         c.text(Col.FABRIC_SUPPLIER, AdminProductRequests.NOTICE_MAX),
                         c.text(Col.FABRIC_COLLECTION, AdminProductRequests.NOTICE_MAX),
                         c.text(Col.FABRIC_CODE, AdminProductRequests.NOTICE_MAX),
-                        c.text(Col.WORKSHOP, AdminProductRequests.NOTICE_MAX), c.won(Col.COST)));
+                        c.text(Col.WORKSHOP, AdminProductRequests.NOTICE_MAX), c.won(Col.COST), subCategory),
+                leadMin == null ? null : leadMin.shortValue());
 
         if (errors.size() == before) {
             // 마지막 그물 — 화면 등록과 같은 규칙(세부 분류가 분류와 맞는지 등). 위에서 거른 것은 여기 오지 않는다
@@ -349,6 +376,20 @@ public class ProductImportService {
                         "엑셀 파일을 읽지 못했습니다. 엑셀에서 다시 저장(.xlsx)해 올려 주세요.")));
             }
         }
+    }
+
+    /**
+     * 주소 칸 → 주소. "FeritoAthleticJacketBlack" 처럼 대문자로 단어를 이은 이름 · 띄어쓰기 · 밑줄은 하이픈으로 나눈다
+     * ("ferito-athletic-jacket-black", 2026-10-27 대표님 예시). 그 밖의 글자(한글 등)는 그대로 두어 검사에서 걸린다.
+     */
+    static String slugify(String raw) {
+        return raw.trim()
+                .replaceAll("([a-z0-9])([A-Z])", "$1-$2")
+                .replaceAll("([A-Z])([A-Z][a-z])", "$1-$2")
+                .replaceAll("[\\s_]+", "-")
+                .toLowerCase(Locale.ROOT)
+                .replaceAll("-{2,}", "-")
+                .replaceAll("^-|-$", "");
     }
 
     private static String randomSuffix() {
@@ -400,6 +441,27 @@ public class ProductImportService {
             return Long.parseLong(digits);
         }
 
+        /** "14" → [null, 14], "14~18" · "14-18" · "14 ~ 18일" → [14, 18]. 같은 두 값이면 한 값. 틀리면 null + 오류 */
+        Long[] range(Col c, int min, int max) {
+            String v = raw(c);
+            if (v == null) {
+                return null;
+            }
+            String t = v.replaceAll("[\\s일]", "");
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("^([0-9]{1,3})(?:[~\\-–]([0-9]{1,3}))?$").matcher(t);
+            if (!m.matches()) {
+                errors.add(new RowError(rowNo, name(c), "숫자 하나(예: 14) 또는 범위(예: 14~18)로 적어 주세요."));
+                return null;
+            }
+            long a = Long.parseLong(m.group(1));
+            long b = m.group(2) == null ? a : Long.parseLong(m.group(2));
+            if (a < min || b > max || a > b) {
+                errors.add(new RowError(rowNo, name(c), min + "~" + max + " 사이로, 앞 숫자가 뒤보다 작게 적어 주세요."));
+                return null;
+            }
+            return new Long[] {a == b ? null : a, b};
+        }
+
         Long number(Col c, int min, int max) {
             String v = raw(c);
             if (v == null) {
@@ -420,6 +482,9 @@ public class ProductImportService {
                 return null;
             }
             E k = korean.get(v.replaceAll("\\s", ""));
+            if (k == null) {
+                k = korean.get(v.replaceAll("\\s", "").toLowerCase(Locale.ROOT)); // 영문 별칭(shirts · pants …)
+            }
             if (k != null) {
                 return k;
             }

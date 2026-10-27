@@ -56,11 +56,13 @@ public final class AdminProductResponse {
             List<Image> images,
             List<Sku> skus,
             /** 관리자 전용 정보 (V39) */
-            Internal internal) {
+            Internal internal,
+            /** 제작 기간 최소 (V40). leadTimeDays 가 최대 */
+            Short leadTimeMinDays) {
     }
 
     public record Internal(String adminName, String fabricSupplier, String fabricCollection, String fabricCode,
-                           String workshop, Long costKrw) {
+                           String workshop, Long costKrw, String subCategory) {
     }
     public record Image(UUID mediaId, String url, String kind, String alt, int sortOrder) {
     }

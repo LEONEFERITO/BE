@@ -133,6 +133,8 @@ public class AdminProductService {
         copy.setNotice(src.getColor(), src.getManufacturer(), src.getCountryOfOrigin(), src.getManufacturedOn());
         copy.setModel(src.getModelHeightCm(), src.getModelWeightKg(), src.getModelSize());
         copy.setLeadTimeDays(src.getLeadTimeDays());
+        copy.setLeadTimeMinDays(src.getLeadTimeMinDays());
+        copy.setSubCategory(src.getSubCategory());
         copy.setInstagramUrl(src.getInstagramUrl());
         copy.setInternal(src.getAdminName(), src.getFabricSupplier(), src.getFabricCollection(), src.getFabricCode(),
                 src.getWorkshop(), src.getCostKrw());
@@ -238,11 +240,13 @@ public class AdminProductService {
                 request.countryOfOrigin(), request.manufacturedOn());
         product.setModel(request.modelHeightCm(), request.modelWeightKg(), request.modelSize());
         product.setLeadTimeDays(request.leadTimeDays());
+        product.setLeadTimeMinDays(request.leadTimeMinDays());
         product.setInstagramUrl(request.instagramUrl());
         AdminProductRequests.Internal in = request.internal();
         if (in != null) {
             product.setInternal(blank(in.adminName()), blank(in.fabricSupplier()), blank(in.fabricCollection()),
                     blank(in.fabricCode()), blank(in.workshop()), in.costKrw());
+            product.setSubCategory(blank(in.subCategory()));
         }
         product.setDisplayOrder(request.displayOrder() == null ? 0 : request.displayOrder());
 

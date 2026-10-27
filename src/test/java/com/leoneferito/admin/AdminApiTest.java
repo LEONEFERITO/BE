@@ -1119,6 +1119,59 @@ class AdminApiTest {
         }
 
         @Test
+        @DisplayName("대표님 예시(2026-10-27) — 영문 대분류 Jacket, 소분류는 자유 태그, 제작기간 범위 14~18, 붙여 쓴 영문 주소는 하이픈으로")
+        void ownerExample() throws Exception {
+            byte[] file = xlsx(CLIENT_HEAD,
+                    new String[] {"Ferito Athletic Alfredo Rodina Jacket", "알프레드 로디냐 에슬레틱 자켓", "Ferito", "Jacket", "shirt",
+                            "S/M/L/XL/2XL/3XL/EX", "Black", "대경직물", "알프레드 로디냐", "R01/612", "BHN", "LEONEFERITO", "990000",
+                            "770000", "14~18", "대한민국", "운동형 체형을 위해 설계한 자켓", "이태리원단으로 제작된 에슬레틱 자켓",
+                            "이태리 메리노 울", "드라이클리닝", "2026년10월27일", "FeritoAthleticAlfredoRodinaJacketBlack"});
+            String res = mockMvc.perform(asAdmin(multipart("/api/admin/products/import")
+                            .file(new MockMultipartFile("file", "owner.xlsx", "application/octet-stream", file))))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.created[0].slug").value("ferito-athletic-alfredo-rodina-jacket-black"))
+                    .andReturn().getResponse().getContentAsString();
+            String id = com.jayway.jsonpath.JsonPath.read(res, "$.created[0].id");
+            mockMvc.perform(asAdmin(get("/api/admin/products/" + id)))
+                    .andExpect(jsonPath("$.category").value("JACKET"))
+                    .andExpect(jsonPath("$.line").value("FERITO"))
+                    .andExpect(jsonPath("$.style").doesNotExist())
+                    .andExpect(jsonPath("$.leadTimeDays").value(18))
+                    .andExpect(jsonPath("$.leadTimeMinDays").value(14))
+                    .andExpect(jsonPath("$.skus.length()").value(7))
+                    .andExpect(jsonPath("$.internal.subCategory").value("shirt"))
+                    .andExpect(jsonPath("$.internal.fabricCode").value("R01/612"));
+
+            byte[] bad = xlsx(CLIENT_HEAD,
+                    new String[] {"셔츠", "", "페리토", "셔츠", "", "", "", "", "", "", "", "", "", "", "18~14", "", "", "", "", "", "", ""});
+            mockMvc.perform(asAdmin(multipart("/api/admin/products/import")
+                            .file(new MockMultipartFile("file", "bad.xlsx", "application/octet-stream", bad))))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.fieldErrors[?(@.field == '2행 · 제작기간')]").exists());
+        }
+
+        @Test
+        @DisplayName("대분류는 한글 · 영문 대소문자 · 복수 모두 같은 분류 — JACKET · Jacket · jacket · 자켓 · Shirts · 바지")
+        void categorySpellings() throws Exception {
+            String[] spellings = {"JACKET", "Jacket", "jacket", "자켓", "Shirts", "바지"};
+            String[] expected = {"JACKET", "JACKET", "JACKET", "JACKET", "SHIRT", "TROUSERS"};
+            String[][] rows = new String[spellings.length][];
+            for (int i = 0; i < spellings.length; i++) {
+                rows[i] = new String[] {"상품 " + i, "", "페리토", spellings[i], "", "", "", "", "", "", "", "", "", "", "", "", "",
+                        "", "", "", "", "spell-" + i};
+            }
+            mockMvc.perform(asAdmin(multipart("/api/admin/products/import")
+                            .file(new MockMultipartFile("file", "spell.xlsx", "application/octet-stream", xlsx(CLIENT_HEAD, rows)))))
+                    .andExpect(status().isOk());
+            for (int i = 0; i < spellings.length; i++) {
+                String slug = "spell-" + i;
+                org.assertj.core.api.Assertions.assertThat(products.findAll().stream()
+                        .filter(p -> p.getSlug().equals(slug)).findFirst().orElseThrow().getCategory().name())
+                        .as(spellings[i]).isEqualTo(expected[i]);
+            }
+        }
+
+        @Test
         @DisplayName("엑셀에서도 틀린 줄은 아무것도 저장하지 않고, 오류는 파일의 칸 이름(판매용상품명 · 대분류)으로 알려 준다")
         void clientXlsxErrors() throws Exception {
             byte[] file = xlsx(CLIENT_HEAD,
