@@ -250,6 +250,21 @@ class OrderApiTest {
         return (String) o[0];
     }
 
+    /** 송장 일괄 입력 업로드 — csrf 도우미는 일반 요청용이라 파일 요청에는 토큰을 직접 붙인다 */
+    private ResultActions uploadTracking(Cookie who, org.springframework.mock.web.MockMultipartFile file, String courier)
+            throws Exception {
+        org.springframework.test.web.servlet.MvcResult t = mockMvc.perform(get("/api/auth/csrf")).andReturn();
+        String token = JsonPath.read(t.getResponse().getContentAsString(), "$.token");
+        Cookie csrfCookie = t.getResponse().getCookie("XSRF-TOKEN");
+        var b = org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .multipart("/api/admin/orders/tracking-import").file(file);
+        if (courier != null) {
+            b.param("courier", courier);
+        }
+        return mockMvc.perform(b.header("X-XSRF-TOKEN", token)
+                .cookie(who, csrfCookie == null ? new Cookie("XSRF-TOKEN", token) : csrfCookie));
+    }
+
     private long tossCalls(String suffix) {
         return TOSS_CALLS.stream().filter(c -> c.path().endsWith(suffix)).count();
     }
@@ -579,6 +594,71 @@ class OrderApiTest {
             send(admin, post("/api/admin/orders/" + shipped + "/cancel"), "{\"reason\":\"x\"}")
                     .andExpect(status().isConflict());
             assertThat(tossCalls("/cancel")).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("주문 목록 엑셀 → 송장 일괄 입력(2026-10-28) — 보낼 주문만 내려받고, 12자리 숫자 송장도 그대로, 발송 메일에 조회 링크")
+        void exportAndTrackingImport() throws Exception {
+            Cookie admin = login(mockMvc, ADMIN, PASSWORD);
+            String a = paidOrder();
+            String b = paidOrder();
+            send(admin, post("/api/admin/orders/" + b + "/start-production"), null).andExpect(status().isNoContent());
+
+            byte[] export = mockMvc.perform(get("/api/admin/orders/export").cookie(admin))
+                    .andExpect(status().isOk())
+                    .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.containsString(".xlsx")))
+                    .andReturn().getResponse().getContentAsByteArray();
+            List<List<String>> rows = com.leoneferito.product.ProductImportService.XlsxRows.read(export);
+            assertThat(rows.getFirst()).startsWith("주문번호", "받는분", "연락처", "우편번호", "주소");
+            assertThat(rows.stream().map(r -> r.getFirst()).toList()).contains(a, b);
+            List<String> rowA = rows.stream().filter(r -> r.getFirst().equals(a)).findFirst().orElseThrow();
+            assertThat(rowA.get(2)).isEqualTo("010-1111-2222");
+            assertThat(rowA.get(3)).isEqualTo("16677");
+
+            // 택배사 칸 없이 — 화면에서 고른 택배사로. 송장번호는 엑셀 숫자 칸(12자리)
+            byte[] file;
+            try (org.apache.poi.xssf.usermodel.XSSFWorkbook wb = new org.apache.poi.xssf.usermodel.XSSFWorkbook();
+                 java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
+                org.apache.poi.ss.usermodel.Sheet sh = wb.createSheet();
+                org.apache.poi.ss.usermodel.Row h = sh.createRow(0);
+                h.createCell(0).setCellValue("주문번호");
+                h.createCell(1).setCellValue("운송장번호");
+                org.apache.poi.ss.usermodel.Row r1 = sh.createRow(1);
+                r1.createCell(0).setCellValue(a);
+                r1.createCell(1).setCellValue(123456789012d);
+                org.apache.poi.ss.usermodel.Row r2 = sh.createRow(2);
+                r2.createCell(0).setCellValue(b);
+                r2.createCell(1).setCellValue("6098-1234-5678");
+                wb.write(out);
+                file = out.toByteArray();
+            }
+            mailer.clear();
+            org.springframework.mock.web.MockMultipartFile upload =
+                    new org.springframework.mock.web.MockMultipartFile("file", "t.xlsx", "application/octet-stream", file);
+            uploadTracking(admin, upload, "CJ대한통운")
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.shipped.length()").value(2));
+            mockMvc.perform(get("/api/orders/" + a).cookie(buyer))
+                    .andExpect(jsonPath("$.status").value("SHIPPED"))
+                    .andExpect(jsonPath("$.courier").value("CJ대한통운"))
+                    .andExpect(jsonPath("$.trackingNumber").value("123456789012"));
+            assertThat(mailer.sent()).anySatisfy(m -> assertThat(m.text())
+                    .contains("https://trace.cjlogistics.com/next/tracking.html?wblNo=123456789012"));
+
+            // 같은 파일을 또 올리면 — 이미 보낸 주문이라 아무것도 하지 않고 줄마다 이유
+            uploadTracking(admin, upload, "CJ대한통운")
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("IMPORT_INVALID"))
+                    .andExpect(jsonPath("$.fieldErrors[?(@.field == '2행 · 주문번호')]").exists())
+                    .andExpect(jsonPath("$.fieldErrors[?(@.field == '3행 · 주문번호')]").exists());
+
+            // 없는 주문 · 회원 접근
+            uploadTracking(admin, new org.springframework.mock.web.MockMultipartFile("file", "t.csv", "text/csv",
+                            "주문번호,송장번호,택배사\r\nLF20260101-NOPE0000,111,한진택배\r\n".getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                    null)
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.fieldErrors[?(@.field == '2행 · 주문번호')]").exists());
+            mockMvc.perform(get("/api/admin/orders/export").cookie(buyer)).andExpect(status().isForbidden());
         }
 
         @Test

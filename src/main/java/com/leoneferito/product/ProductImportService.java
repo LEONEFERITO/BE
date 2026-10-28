@@ -343,12 +343,13 @@ public class ProductImportService {
      * 서식이 "#,##0" 이면 "150,000"(won() 이 쉼표를 받는다). 수식 칸은 계산한 값. 빈 줄도 자리를 지켜 줄 번호가 엑셀과 같다.
      * 압축 폭탄 · 거대한 시트는 POI 의 기본 방어(ZipSecureFile)와 MAX_ROWS 가 막는다.
      */
-    static final class XlsxRows {
+    public static final class XlsxRows {
 
         private XlsxRows() {
         }
 
-        static List<List<String>> read(byte[] bytes) {
+        /** 송장 일괄 입력(주문 쪽)도 같은 읽기를 쓴다 — 그래서 public */
+        public static List<List<String>> read(byte[] bytes) {
             try (org.apache.poi.ss.usermodel.Workbook wb =
                          new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(bytes))) {
                 if (wb.getNumberOfSheets() == 0) {
@@ -365,7 +366,7 @@ public class ProductImportService {
                     if (row != null) {
                         for (int c = 0; c < Math.max(row.getLastCellNum(), 0); c++) {
                             org.apache.poi.ss.usermodel.Cell cell = row.getCell(c);
-                            cells.add(cell == null ? "" : fmt.formatCellValue(cell, eval));
+                            cells.add(cell == null ? "" : text(cell, fmt, eval));
                         }
                     }
                     rows.add(cells);
@@ -375,6 +376,24 @@ public class ProductImportService {
                 throw new ImportException(List.of(new RowError(0, null,
                         "엑셀 파일을 읽지 못했습니다. 엑셀에서 다시 저장(.xlsx)해 올려 주세요.")));
             }
+        }
+
+        /**
+         * 숫자 칸(날짜 서식 아님)은 소수점 없는 정수면 숫자 그대로 — 엑셀 "일반" 서식은 12자리 송장번호를 1.23457E+11 로
+         * 보여 주는데, 보이는 대로 읽으면 번호가 깨진다(2026-10-28). 나머지는 화면에 보이는 글자 그대로.
+         */
+        private static String text(org.apache.poi.ss.usermodel.Cell cell, org.apache.poi.ss.usermodel.DataFormatter fmt,
+                                   org.apache.poi.ss.usermodel.FormulaEvaluator eval) {
+            org.apache.poi.ss.usermodel.CellType type = cell.getCellType() == org.apache.poi.ss.usermodel.CellType.FORMULA
+                    ? cell.getCachedFormulaResultType() : cell.getCellType();
+            if (type == org.apache.poi.ss.usermodel.CellType.NUMERIC
+                    && !org.apache.poi.ss.usermodel.DateUtil.isCellDateFormatted(cell)) {
+                java.math.BigDecimal v = java.math.BigDecimal.valueOf(cell.getNumericCellValue());
+                if (v.signum() == 0 || v.stripTrailingZeros().scale() <= 0) {
+                    return v.setScale(0, java.math.RoundingMode.UNNECESSARY).toPlainString();
+                }
+            }
+            return fmt.formatCellValue(cell, eval);
         }
     }
 

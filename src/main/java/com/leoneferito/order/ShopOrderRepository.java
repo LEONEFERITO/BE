@@ -30,6 +30,9 @@ public interface ShopOrderRepository extends JpaRepository<ShopOrder, UUID> {
 
     boolean existsByMemberIdAndStatusIn(UUID memberId, Collection<OrderStatus> statuses);
 
+    /** 보낼 주문(결제 완료 · 제작 중) — 주문 목록 엑셀(2026-10-28). 오래된 주문부터 */
+    List<ShopOrder> findByStatusInOrderByCreatedAtAsc(Collection<OrderStatus> statuses);
+
     /**
      * 관리자 검색 — 주문번호 · 받는 분 · 연락처(하이픈 무시). 패턴 규칙은 AdminMemberService 와 같다
      * ({@code :q} 는 소문자·이스케이프된 %…% 패턴, {@code :digits} 는 숫자만 모은 패턴).

@@ -97,6 +97,33 @@ public class AdminOrderController {
     public record Ship(@NotBlank @Size(max = 50) String courier, @NotBlank @Size(max = 50) String trackingNumber) {
     }
 
+    /** 주문 목록 엑셀 — 보낼 주문(결제 완료 · 제작 중)의 받는 분 · 주소 · 연락처 (2026-10-28). */
+    @GetMapping("/export")
+    public ResponseEntity<byte[]> export() {
+        String day = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).toString();
+        return ResponseEntity.ok()
+                .contentType(org.springframework.http.MediaType.parseMediaType(
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"leoneferito-orders-" + day + ".xlsx\"")
+                .body(service.exportShippable());
+    }
+
+    /**
+     * 송장 일괄 입력 (2026-10-28) — 엑셀 · CSV 의 주문번호 · 송장번호(· 택배사)로 여러 주문을 발송 처리.
+     * 한 줄이라도 틀리면 아무것도 하지 않고 400 IMPORT_INVALID + 줄 · 칸 · 이유.
+     */
+    @PostMapping("/tracking-import")
+    public TrackingImportResult trackingImport(@AuthenticationPrincipal MemberPrincipal me,
+                                               @RequestParam("file") org.springframework.web.multipart.MultipartFile file,
+                                               @RequestParam(value = "courier", required = false) String courier)
+            throws java.io.IOException {
+        return new TrackingImportResult(service.importTracking(me.getId(), file.getBytes(), courier));
+    }
+
+    public record TrackingImportResult(java.util.List<AdminOrderService.Shipped> shipped) {
+    }
+
     /** 취소 사유는 필수다. 손님에게 환불 사유로 보이고 토스에도 남는다. */
     public record Cancel(@NotBlank @Size(max = 200) String reason) {
     }

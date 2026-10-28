@@ -103,7 +103,8 @@ public class OrderNotifier {
                 }
                 case SHIPPED -> toCustomer(o, "상품을 보냈습니다", "주문하신 상품을 보냈습니다.\n\n"
                         + "주문번호  " + no + "\n택배사  " + o.getCourier() + "\n송장번호  " + o.getTrackingNumber()
-                        + "\n\n배송 조회는 택배사 홈페이지에서 송장번호로 할 수 있습니다.\n주문 상세 " + front + "/mypage/order/?no=" + no);
+                        + trackingLine(o.getCourier(), o.getTrackingNumber())
+                        + "\n주문 상세 " + front + "/mypage/order/?no=" + no);
                 case CANCELLED_BY_CUSTOMER, CANCELLED_BY_ADMIN -> {
                     toCustomer(o, "주문이 취소되었습니다", "주문이 취소되어 결제 금액을 환불했습니다.\n\n"
                             + "주문번호  " + no + "\n환불 금액  " + won(o.getRefundedAmountKrw())
@@ -220,5 +221,28 @@ public class OrderNotifier {
 
     private static String won(long krw) {
         return NumberFormat.getNumberInstance(Locale.KOREA).format(krw) + "원";
+    }
+
+    /**
+     * 택배사 배송 조회 주소 (2026-10-28) — 관리자 화면 택배사 목록(FE AdminOrderDetail COURIERS)과 같은 이름.
+     * FE lib/tracking.ts 와 같은 표다. 모르는 택배사면 null — 메일은 "택배사 홈페이지에서 조회" 안내로 대신한다.
+     */
+    static final java.util.Map<String, String> TRACKING_URL = java.util.Map.of(
+            "CJ대한통운", "https://trace.cjlogistics.com/next/tracking.html?wblNo=",
+            "한진택배", "https://www.hanjin.com/kor/CMS/DeliveryMgr/WaybillResult.do?mCode=MN038&schLang=KR&wblnumText2=",
+            "롯데택배", "https://www.lotteglogis.com/home/reservation/tracking/linkView?InvNo=",
+            "우체국택배", "https://service.epost.go.kr/trace.RetrieveDomRigiTraceList.comm?sid1=",
+            "로젠택배", "https://www.ilogen.com/web/personal/trace/");
+
+    static String trackingUrl(String courier, String trackingNumber) {
+        String base = courier == null ? null : TRACKING_URL.get(courier.replaceAll("\\s", ""));
+        return base == null || trackingNumber == null ? null
+                : base + java.net.URLEncoder.encode(trackingNumber, java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    private static String trackingLine(String courier, String trackingNumber) {
+        String url = trackingUrl(courier, trackingNumber);
+        return url == null ? "\n\n배송 조회는 택배사 홈페이지에서 송장번호로 할 수 있습니다."
+                : "\n\n배송 조회 " + url;
     }
 }
