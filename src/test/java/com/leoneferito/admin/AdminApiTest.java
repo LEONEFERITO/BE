@@ -860,6 +860,27 @@ class AdminApiTest {
         }
 
         @Test
+        @DisplayName("메인 사진 다섯 장(V41) — 대표 · 착용 · 디테일 · 추가 1 · 추가 2 가 손님 상세에 나간다")
+        void fivePhotos() throws Exception {
+            String id = createProduct("five-photos");
+            String[] m = {uploadImage(), uploadImage(), uploadImage(), uploadImage(), uploadImage()};
+            mockMvc.perform(asAdmin(put("/api/admin/products/" + id))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body("five-photos", """
+                                    [ { "mediaId": "%s", "kind": "MAIN", "alt": "1", "sortOrder": 0 },
+                                      { "mediaId": "%s", "kind": "WORN", "alt": "2", "sortOrder": 1 },
+                                      { "mediaId": "%s", "kind": "DETAIL", "alt": "3", "sortOrder": 2 },
+                                      { "mediaId": "%s", "kind": "EXTRA_1", "alt": "4", "sortOrder": 3 },
+                                      { "mediaId": "%s", "kind": "EXTRA_2", "alt": "5", "sortOrder": 4 } ]
+                                    """.formatted((Object[]) m))))
+                    .andExpect(status().isNoContent());
+            mockMvc.perform(asAdmin(post("/api/admin/products/" + id + "/publish"))).andExpect(status().isNoContent());
+            mockMvc.perform(get("/api/products/five-photos"))
+                    .andExpect(jsonPath("$.images.length()").value(5))
+                    .andExpect(jsonPath("$.images[4].kind").value("EXTRA_2"));
+        }
+
+        @Test
         @DisplayName("메인 사진은 종류마다 한 장 — 대표 두 장은 거부된다")
         void oneMainOnly() throws Exception {
             String id = createProduct("two-mains");

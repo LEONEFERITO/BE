@@ -13,6 +13,9 @@ public enum ProductImageKind {
     WORN,
     /** 디테일컷. */
     DETAIL,
+    /** 추가 사진 두 칸 (V41, 2026-10-28 "똑같은 규격 사진 5개") — 메인 사진 줄의 넷째 · 다섯째. */
+    EXTRA_1,
+    EXTRA_2,
     /** 누끼샷. 배경이 없는 컷 — 단색 면 위에 올릴 때 쓴다. */
     CUTOUT,
     /**
