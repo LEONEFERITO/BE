@@ -8,6 +8,8 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 @Service
 public class SiteBusinessService {
 
@@ -28,5 +30,17 @@ public class SiteBusinessService {
         log.info("푸터 사업자 정보 저장");
         events.publishEvent(new FrontRebuildTrigger.CatalogChanged("사업자정보"));
         return b;
+    }
+    /** 가이드 페이지 제작 소요 기간 표(V42) */
+    @Transactional(readOnly = true)
+    public List<SiteBusiness.LeadTime> leadTimes() {return get().leadTimes();}
+    @Transactional
+    public List<SiteBusiness.LeadTime> saveLeadTimes(List<SiteBusiness.LeadTime> rows) {
+        SiteBusiness b = get();
+        b.changeLeadTimes(rows);
+        business.flush();
+        log.info("가이드 제작 기간 저장 ({}줄)", rows.size());
+        events.publishEvent(new FrontRebuildTrigger.CatalogChanged("가이드"));
+        return b.leadTimes();
     }
 }
