@@ -15,10 +15,13 @@ import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * 판매 상품.
@@ -66,6 +69,10 @@ public class Product {
     /** 정가. 할인 표시(취소선)에 쓴다. */
     @Column(name = "list_price_krw")
     private Long listPriceKrw;
+
+    /** 수트 2피스(자켓 + 팬츠) 판매가 (V43). 3피스는 {@link #priceKrw}. {@code null} 이면 2피스는 팔지 않는다. */
+    @Column(name = "two_piece_price_krw")
+    private Long twoPiecePriceKrw;
 
     /** 목록 카드용 한 줄. 상세 본문(description)과 쓰임이 다르다 — V6 주석 참고. */
     @Column
@@ -377,6 +384,14 @@ public class Product {
         this.listPriceKrw = listPriceKrw;
     }
 
+    public Long getTwoPiecePriceKrw() {
+        return twoPiecePriceKrw;
+    }
+
+    public void setTwoPiecePriceKrw(Long twoPiecePriceKrw) {
+        this.twoPiecePriceKrw = twoPiecePriceKrw;
+    }
+
     public String getSummary() {
         return summary;
     }
@@ -584,6 +599,146 @@ public class Product {
 
     public List<ProductSku> getSkus() {
         return List.copyOf(skus);
+    }
+
+    // ── 수트 구성 (V43, 2026-10-28 디자이너 "3피스 / 2피스 + 자켓 · 베스트 · 팬츠 사이즈 따로") ─────────────
+
+    /** 수트 조각. 손님 화면 · 주문 줄에는 한글 이름이 나간다. */
+    public enum Piece {
+        JACKET("자켓"), VEST("베스트"), PANTS("팬츠");
+
+        private final String label;
+
+        Piece(String label) {
+            this.label = label;
+        }
+
+        public String label() {
+            return label;
+        }
+    }
+
+    /** 구성 — 3피스(자켓 + 베스트 + 팬츠, 값은 판매가) · 2피스(자켓 + 팬츠, 값은 2피스 판매가). */
+    public enum SuitSet {
+        THREE("3피스", List.of(Piece.JACKET, Piece.VEST, Piece.PANTS)),
+        TWO("2피스", List.of(Piece.JACKET, Piece.PANTS));
+
+        private final String label;
+        private final List<Piece> pieces;
+
+        SuitSet(String label, List<Piece> pieces) {
+            this.label = label;
+            this.pieces = pieces;
+        }
+
+        public String label() {
+            return label;
+        }
+
+        public List<Piece> pieces() {
+            return pieces;
+        }
+    }
+
+    /**
+     * 고른 구성 한 벌. 장바구니 · 주문의 size 칸에는 {@link #label()} 이 들어간다 — "3피스 · 자켓 L / 베스트 M / 팬츠 L".
+     * 그래서 주문서 · 관리자 주문 · 엑셀 · 메일이 따로 고치지 않아도 구성과 조각별 사이즈를 그대로 보여 준다.
+     *
+     * <p>{@link #parse} 는 그 줄을 다시 읽는다. 읽은 값으로 다시 만든 줄이 들어온 줄과 글자 하나까지 같아야 받는다 —
+     * 모양이 조금이라도 다르면(공백 · 순서 · 빠진 조각) 모르는 줄이다.
+     */
+    public record SuitChoice(SuitSet set, Map<Piece, String> sizes) {
+
+        public SuitChoice {
+            Objects.requireNonNull(set, "set");
+            sizes = Map.copyOf(sizes);
+        }
+
+        public String label() {
+            return set.label() + " · " + set.pieces().stream()
+                    .map(p -> p.label() + " " + sizes.get(p))
+                    .collect(Collectors.joining(" / "));
+        }
+
+        public static Optional<SuitChoice> parse(String text) {
+            if (text == null) {
+                return Optional.empty();
+            }
+            for (SuitSet set : SuitSet.values()) {
+                String head = set.label() + " · ";
+                if (!text.startsWith(head)) {
+                    continue;
+                }
+                String[] parts = text.substring(head.length()).split(" / ", -1);
+                if (parts.length != set.pieces().size()) {
+                    return Optional.empty();
+                }
+                Map<Piece, String> sizes = new EnumMap<>(Piece.class);
+                for (int i = 0; i < parts.length; i++) {
+                    Piece piece = set.pieces().get(i);
+                    String prefix = piece.label() + " ";
+                    if (!parts[i].startsWith(prefix) || parts[i].length() == prefix.length()) {
+                        return Optional.empty();
+                    }
+                    sizes.put(piece, parts[i].substring(prefix.length()));
+                }
+                SuitChoice choice = new SuitChoice(set, sizes);
+                return choice.label().equals(text) ? Optional.of(choice) : Optional.empty();
+            }
+            return Optional.empty();
+        }
+    }
+
+    /** 조각이 붙은 사이즈가 하나라도 있으면 수트 구성 상품이다(관리자 저장이 섞지 못하게 막는다 — 전부 붙거나 전부 없거나). */
+    public boolean isSuitSet() {
+        return skus.stream().anyMatch(s -> s.getPiece() != null);
+    }
+
+    /** 이 구성을 파는가 — 수트 구성 상품이고, 그 구성의 값이 있고, 구성의 조각마다 사이즈가 하나 이상 있다. */
+    public boolean offers(SuitSet set) {
+        Long price = set == SuitSet.THREE ? priceKrw : twoPiecePriceKrw;
+        return isSuitSet() && price != null
+                && set.pieces().stream().allMatch(p -> skus.stream().anyMatch(s -> s.getPiece() == p));
+    }
+
+    /**
+     * 이 사이즈 줄(장바구니 · 주문의 size)로 한 벌 살 때의 값. 보통 상품은 판매가, 수트 구성은 고른 구성의 값.
+     * 모르는 줄이거나 팔지 않는 구성이면 {@code null} — 담기 · 주문이 거절한다. 화면이 보낸 값은 믿지 않고 여기서 다시 정한다.
+     */
+    public Long priceFor(String size) {
+        if (!isSuitSet()) {
+            return priceKrw;
+        }
+        return SuitChoice.parse(size)
+                .filter(c -> offers(c.set()))
+                .map(c -> c.set() == SuitSet.THREE ? priceKrw : twoPiecePriceKrw)
+                .orElse(null);
+    }
+
+    /**
+     * 이 사이즈 줄이 가리키는 사이즈 칸들 — 보통 상품은 한 칸, 수트 구성은 조각마다 한 칸(제작 가능 여부 · 재고는 부르는 쪽이 본다).
+     * 하나라도 없으면(지워진 사이즈 · 모르는 줄 · 팔지 않는 구성) 빈 목록.
+     */
+    public List<ProductSku> skusFor(String size) {
+        if (!isSuitSet()) {
+            return skus.stream().filter(s -> s.getPiece() == null && s.getSize().equals(size)).limit(1).toList();
+        }
+        Optional<SuitChoice> choice = SuitChoice.parse(size).filter(c -> offers(c.set()));
+        if (choice.isEmpty()) {
+            return List.of();
+        }
+        List<ProductSku> found = new ArrayList<>();
+        for (Piece piece : choice.get().set().pieces()) {
+            String want = choice.get().sizes().get(piece);
+            Optional<ProductSku> sku = skus.stream()
+                    .filter(s -> s.getPiece() == piece && s.getSize().equals(want))
+                    .findFirst();
+            if (sku.isEmpty()) {
+                return List.of();
+            }
+            found.add(sku.get());
+        }
+        return found;
     }
 
     /*

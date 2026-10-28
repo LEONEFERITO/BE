@@ -74,8 +74,29 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
      * 한쪽은 기다렸다가 줄어든 수량을 본다. 사이즈가 지워졌으면 비어 있다.
      */
     @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
-    @Query("SELECT s FROM ProductSku s WHERE s.product.id = :productId AND s.size = :size")
+    @Query("SELECT s FROM ProductSku s WHERE s.product.id = :productId AND s.piece IS NULL AND s.size = :size")
     Optional<ProductSku> findSkuForUpdate(@Param("productId") UUID productId, @Param("size") String size);
+
+    /** 수트 조각 사이즈 한 줄 — {@link #findSkuForUpdate} 와 같이 잠그고 읽는다 (V43). */
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT s FROM ProductSku s WHERE s.product.id = :productId AND s.piece = :piece AND s.size = :size")
+    Optional<ProductSku> findPieceSkuForUpdate(@Param("productId") UUID productId, @Param("piece") Product.Piece piece,
+            @Param("size") String size);
+
+    /**
+     * 주문 줄 하나가 가리키는 사이즈 칸들을 잠그고 읽는다 — 보통 상품은 한 칸, 수트 구성("3피스 · 자켓 L / …")은 조각마다 한 칸.
+     * 지워진 칸은 빠진다(재고를 셀 곳이 없다).
+     */
+    default List<ProductSku> findSkusForUpdate(UUID productId, String size) {
+        Optional<Product.SuitChoice> choice = Product.SuitChoice.parse(size);
+        if (choice.isEmpty()) {
+            return findSkuForUpdate(productId, size).stream().toList();
+        }
+        return choice.get().set().pieces().stream()
+                .map(p -> findPieceSkuForUpdate(productId, p, choice.get().sizes().get(p)))
+                .flatMap(Optional::stream)
+                .toList();
+    }
 
     /** 이 상품이 걸린 주문 항목이 하나라도 있는가 — 있으면 지우지 못한다(주문 기록 5년 보관). 결제 전 주문도 센다. */
     @Query(value = "SELECT EXISTS (SELECT 1 FROM order_item WHERE product_id = :productId)", nativeQuery = true)

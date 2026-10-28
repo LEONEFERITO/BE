@@ -352,6 +352,45 @@ class AdminApiTest {
         }
 
         @Test
+        @DisplayName("수트 구성(V43) — 조각별 사이즈 · 2피스 판매가가 저장되고, 섞이거나 조각이 빠지거나 보통 상품에 2피스 값이면 400")
+        void suitSet() throws Exception {
+            String suit = saveBody("suit-set")
+                    .replace("\"category\": \"SHIRT\"", "\"category\": \"SUIT\"")
+                    .replace("\"priceKrw\": 290000,", "\"priceKrw\": 900000, \"twoPiecePriceKrw\": 700000,")
+                    .replaceAll("(?s)\"skus\": \\[.*?\\]\\s*\\}\\s*$", """
+                            "skus": [
+                                { "size": "M", "piece": "JACKET" }, { "size": "L", "piece": "JACKET", "stock": 2 },
+                                { "size": "M", "piece": "VEST" },
+                                { "size": "M", "piece": "PANTS" }, { "size": "L", "piece": "PANTS" }
+                              ]
+                            }
+                            """);
+            MvcResult r = mockMvc.perform(asAdmin(post("/api/admin/products"))
+                            .contentType(MediaType.APPLICATION_JSON).content(suit))
+                    .andExpect(status().isCreated())
+                    .andReturn();
+            String id = com.jayway.jsonpath.JsonPath.read(r.getResponse().getContentAsString(), "$.id");
+            mockMvc.perform(asAdmin(get("/api/admin/products/" + id)))
+                    .andExpect(jsonPath("$.twoPiecePriceKrw").value(700000))
+                    .andExpect(jsonPath("$.skus.length()").value(5))
+                    .andExpect(jsonPath("$.skus[0].piece").value("JACKET"))
+                    .andExpect(jsonPath("$.skus[1].stock").value(2))
+                    .andExpect(jsonPath("$.skus[2].piece").value("VEST"));
+
+            // 보통 사이즈와 섞기 · 베스트 빠짐 · 보통 상품에 2피스 값 · 조각 사이즈에 "/" · 같은 조각 같은 사이즈 두 번
+            for (String bad : List.of(
+                    suit.replace("{ \"size\": \"M\", \"piece\": \"VEST\" }", "{ \"size\": \"M\" }"),
+                    suit.replace("{ \"size\": \"M\", \"piece\": \"VEST\" },", ""),
+                    saveBody("two-piece-plain").replace("\"priceKrw\": 290000,", "\"priceKrw\": 290000, \"twoPiecePriceKrw\": 100000,"),
+                    suit.replace("{ \"size\": \"M\", \"piece\": \"VEST\" }", "{ \"size\": \"M/L\", \"piece\": \"VEST\" }"),
+                    suit.replace("{ \"size\": \"L\", \"piece\": \"PANTS\" }", "{ \"size\": \"M\", \"piece\": \"PANTS\" }"))) {
+                mockMvc.perform(asAdmin(post("/api/admin/products"))
+                                .contentType(MediaType.APPLICATION_JSON).content(bad.replace("\"suit-set\"", "\"suit-bad\"")))
+                        .andExpect(status().isBadRequest());
+            }
+        }
+
+        @Test
         @DisplayName("등록하면 초안이다 — 저장이 곧 공개가 아니다")
         void createdAsDraft() throws Exception {
             mockMvc.perform(asAdmin(post("/api/admin/products"))

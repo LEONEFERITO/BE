@@ -116,7 +116,9 @@ public class ProductQueryService {
                         .sorted(Comparator.comparingInt(ProductSku::getSortOrder))
                         .map(this::toSku)
                         .toList(),
-                p.getLeadTimeMinDays());
+                p.getLeadTimeMinDays(),
+                // 2피스를 실제로 팔 때만 — 값만 있고 조각이 모자라면 손님 화면에 고를 길을 내지 않는다
+                p.offers(Product.SuitSet.TWO) ? p.getTwoPiecePriceKrw() : null);
     }
 
     /** 차트가 없으면 null 을 준다. 화면은 그 자리를 비우고 안내 문구를 띄운다. */
@@ -151,6 +153,7 @@ public class ProductQueryService {
                         .sorted(Comparator.comparing(ProductMeasurement::getPart))
                         .map(m -> new ProductResponse.Measurement(
                                 m.getPart().name(), m.getValueCm(), m.getToleranceCm()))
-                        .toList());
+                        .toList(),
+                sku.getPiece() == null ? null : sku.getPiece().name());
     }
 }

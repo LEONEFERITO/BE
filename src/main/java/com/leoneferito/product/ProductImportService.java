@@ -311,7 +311,7 @@ public class ProductImportService {
             } else {
                 int order = 0;
                 for (String s : seen) {
-                    skus.add(new AdminProductRequests.Sku(s, order++, true, null, List.of()));
+                    skus.add(new AdminProductRequests.Sku(s, order++, true, null, List.of(), null));
                 }
             }
         }
@@ -327,7 +327,9 @@ public class ProductImportService {
                         c.text(Col.FABRIC_COLLECTION, AdminProductRequests.NOTICE_MAX),
                         c.text(Col.FABRIC_CODE, AdminProductRequests.NOTICE_MAX),
                         c.text(Col.WORKSHOP, AdminProductRequests.NOTICE_MAX), c.won(Col.COST), subCategory),
-                leadMin == null ? null : leadMin.shortValue());
+                leadMin == null ? null : leadMin.shortValue(),
+                // 수트 구성(조각별 사이즈 · 2피스 판매가)은 엑셀에 칸이 없다 — 등록 뒤 관리자 상품 화면에서 정한다
+                null);
 
         if (errors.size() == before) {
             // 마지막 그물 — 화면 등록과 같은 규칙(세부 분류가 분류와 맞는지 등). 위에서 거른 것은 여기 오지 않는다

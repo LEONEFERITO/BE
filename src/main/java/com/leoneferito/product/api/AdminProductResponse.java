@@ -58,7 +58,9 @@ public final class AdminProductResponse {
             /** 관리자 전용 정보 (V39) */
             Internal internal,
             /** 제작 기간 최소 (V40). leadTimeDays 가 최대 */
-            Short leadTimeMinDays) {
+            Short leadTimeMinDays,
+            /** 수트 2피스 판매가 (V43) */
+            Long twoPiecePriceKrw) {
     }
 
     public record Internal(String adminName, String fabricSupplier, String fabricCollection, String fabricCode,
@@ -67,7 +69,8 @@ public final class AdminProductResponse {
     public record Image(UUID mediaId, String url, String kind, String alt, int sortOrder) {
     }
     /** {@code stock} — 남은 수량(V30). null 이면 세지 않음(주문 후 제작). */
-    public record Sku(String size, int sortOrder, boolean orderable, Integer stock, List<Measurement> measurements) {
+    public record Sku(String size, int sortOrder, boolean orderable, Integer stock, List<Measurement> measurements,
+                      /** 수트 조각 (V43). null 이면 보통 사이즈 */ String piece) {
     }
     public record Measurement(String part, BigDecimal valueCm, BigDecimal toleranceCm) {
     }

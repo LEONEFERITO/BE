@@ -125,6 +125,7 @@ public class AdminProductService {
         copy.setSummary(src.getSummary());
         copy.setPriceKrw(src.getPriceKrw());
         copy.setListPriceKrw(src.getListPriceKrw());
+        copy.setTwoPiecePriceKrw(src.getTwoPiecePriceKrw());
         copy.setDescription(src.getDescription());
         copy.setIntent(src.getIntent());
         copy.setFeatures(src.getFeatures());
@@ -144,7 +145,7 @@ public class AdminProductService {
             copy.addImage(new ProductImage(UUID.randomUUID(), i.getMedia(), i.getKind(), i.getAlt(), i.getSortOrder()));
         }
         for (ProductSku s : src.getSkus()) {
-            ProductSku sku = new ProductSku(UUID.randomUUID(), s.getSize(), s.getSortOrder());
+            ProductSku sku = new ProductSku(UUID.randomUUID(), s.getPiece(), s.getSize(), s.getSortOrder());
             sku.setOrderable(s.isOrderable());
             for (ProductMeasurement m : s.getMeasurements()) {
                 sku.addMeasurement(new ProductMeasurement(UUID.randomUUID(), m.getPart(), m.getValueCm(), m.getToleranceCm()));
@@ -231,6 +232,7 @@ public class AdminProductService {
         product.setSummary(request.summary());
         product.setPriceKrw(request.priceKrw());
         product.setListPriceKrw(request.listPriceKrw());
+        product.setTwoPiecePriceKrw(request.twoPiecePriceKrw());
         product.setDescription(request.description());
         product.setIntent(request.intent());
         product.setFeatures(request.features());
@@ -306,8 +308,9 @@ public class AdminProductService {
              * 사이즈 정렬은 보낸 순서를 따른다. 문자열 정렬이면 100 이 95 앞에 오고,
              * 숫자 변환은 S/M/L 이 들어오는 순간 깨진다. 사람이 정한 순서가 가장 정확하다.
              */
+            // 수트 조각(V43)이 붙으면 조각 사이즈 — 구성 · 섞임 규칙은 요청 검증(Save.isSuitSkusValid)이 먼저 본다
             ProductSku sku = new ProductSku(
-                    UUID.randomUUID(), r.size(), r.sortOrder() == null ? i : r.sortOrder());
+                    UUID.randomUUID(), r.piece(), r.size(), r.sortOrder() == null ? i : r.sortOrder());
             if (r.orderable() != null) sku.setOrderable(r.orderable());
             // 재고는 보낸 값 그대로 — 비우면(null) 세지 않는다. 저장은 관리자 화면이 연 순간의 수량으로 덮는다:
             // 그 사이 팔린 수량이 있으면 다시 열어 확인하면 된다(주문이 드문 동안은 이게 가장 단순하다).

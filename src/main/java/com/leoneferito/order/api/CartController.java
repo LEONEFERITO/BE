@@ -57,7 +57,7 @@ public class CartController {
     }
 
     public record Add(@NotBlank @Size(max = 80) String slug,
-                      @NotBlank @Size(max = 20) String size,
+                      @NotBlank @Size(max = 80) String size,
                       @Min(1) @Max(10) int quantity) {
     }
 

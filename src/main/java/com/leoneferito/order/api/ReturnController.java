@@ -57,6 +57,6 @@ public class ReturnController {
                          @Size(max = 5) List<UUID> photoIds) {
     }
 
-    public record Line(@NotNull UUID orderItemId, @Min(1) @Max(10) int quantity, @Size(max = 20) String exchangeSize) {
+    public record Line(@NotNull UUID orderItemId, @Min(1) @Max(10) int quantity, @Size(max = 80) String exchangeSize) {
     }
 }

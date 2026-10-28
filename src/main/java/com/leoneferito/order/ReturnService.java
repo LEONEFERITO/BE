@@ -2,6 +2,7 @@ package com.leoneferito.order;
 
 import com.leoneferito.common.error.ResourceNotFoundException;
 import com.leoneferito.product.Product;
+import com.leoneferito.product.ProductSku;
 import com.leoneferito.product.ProductRepository;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -156,8 +157,16 @@ public class ReturnService {
     private void requireOrderableSize(OrderItem oi, String size) {
         Product p = products.findById(oi.getProductId())
                 .orElseThrow(() -> new ReturnException("이 상품은 교환할 수 없습니다. 반품으로 신청해 주세요."));
-        boolean ok = p.getSkus().stream().anyMatch(s -> s.getSize().equals(size) && s.isAvailable());
-        if (!ok) {
+        // 수트 구성(V43)은 같은 구성 안에서만 바꾼다 — 3피스를 2피스로 바꾸면 값이 달라진다
+        if (p.isSuitSet()) {
+            var from = Product.SuitChoice.parse(oi.getSize());
+            var to = Product.SuitChoice.parse(size);
+            if (from.isEmpty() || to.isEmpty() || from.get().set() != to.get().set()) {
+                throw new ReturnException("구성(3피스 · 2피스)은 바꿀 수 없습니다. 조각별 사이즈만 골라 주세요.");
+            }
+        }
+        List<ProductSku> skus = p.skusFor(size);
+        if (skus.isEmpty() || !skus.stream().allMatch(ProductSku::isAvailable)) {
             throw new ReturnException(size + " 사이즈로는 지금 교환할 수 없습니다.");
         }
     }

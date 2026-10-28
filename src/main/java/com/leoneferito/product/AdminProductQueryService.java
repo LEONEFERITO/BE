@@ -96,7 +96,8 @@ public class AdminProductQueryService {
                         .toList(),
                 new AdminProductResponse.Internal(p.getAdminName(), p.getFabricSupplier(), p.getFabricCollection(),
                         p.getFabricCode(), p.getWorkshop(), p.getCostKrw(), p.getSubCategory()),
-                p.getLeadTimeMinDays());
+                p.getLeadTimeMinDays(),
+                p.getTwoPiecePriceKrw());
     }
 
     private AdminProductResponse.Sku toSku(ProductSku sku) {
@@ -110,6 +111,7 @@ public class AdminProductQueryService {
                         .sorted(Comparator.comparing(ProductMeasurement::getPart))
                         .map(m -> new AdminProductResponse.Measurement(
                                 m.getPart().name(), m.getValueCm(), m.getToleranceCm()))
-                        .toList());
+                        .toList(),
+                sku.getPiece() == null ? null : sku.getPiece().name());
     }
 }

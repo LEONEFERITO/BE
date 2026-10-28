@@ -3,6 +3,8 @@ package com.leoneferito.product;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
@@ -42,6 +44,11 @@ public class ProductSku {
     @Column(nullable = false)
     private String size;
 
+    /** 수트 조각(V43). {@code null} 이면 보통 사이즈. 수트 구성 상품은 사이즈마다 자켓 · 베스트 · 팬츠 중 하나가 붙는다. */
+    @Enumerated(EnumType.STRING)
+    @Column
+    private Product.Piece piece;
+
     @Column(name = "sort_order", nullable = false)
     private int sortOrder;
 
@@ -67,7 +74,13 @@ public class ProductSku {
     }
 
     public ProductSku(UUID id, String size, int sortOrder) {
+        this(id, null, size, sortOrder);
+    }
+
+    /** 수트 조각 사이즈 (V43). {@code piece} 가 null 이면 보통 사이즈. */
+    public ProductSku(UUID id, Product.Piece piece, String size, int sortOrder) {
         this.id = Objects.requireNonNull(id, "id");
+        this.piece = piece;
         this.size = Objects.requireNonNull(size, "size");
         this.sortOrder = sortOrder;
     }
@@ -92,6 +105,15 @@ public class ProductSku {
 
     public String getSize() {
         return size;
+    }
+
+    public Product.Piece getPiece() {
+        return piece;
+    }
+
+    /** 손님 · 관리자에게 보일 이름 — 보통 사이즈는 "L", 수트 조각은 "자켓 L". */
+    public String displayName() {
+        return piece == null ? size : piece.label() + " " + size;
     }
 
     public int getSortOrder() {
@@ -130,7 +152,7 @@ public class ProductSku {
             return;
         }
         if (stock < quantity) {
-            throw new IllegalStateException("재고 부족 size=" + size + " stock=" + stock + " want=" + quantity);
+            throw new IllegalStateException("재고 부족 size=" + displayName() + " stock=" + stock + " want=" + quantity);
         }
         stock -= quantity;
     }

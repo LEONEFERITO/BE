@@ -1,6 +1,7 @@
 package com.leoneferito.product.api;
 
 import com.leoneferito.product.MeasurementPart;
+import com.leoneferito.product.Product;
 import com.leoneferito.product.ProductCategory;
 import com.leoneferito.product.ProductImageKind;
 import com.leoneferito.product.ProductLine;
@@ -121,7 +122,42 @@ public final class AdminProductRequests {
             /** 관리자 전용 정보(V39). 안 보내면(null) 저장된 값을 그대로 둔다 — 예전 화면 · 다른 경로의 요청이 지우지 않게. */
             @Valid Internal internal,
             /** 제작 기간 최소(V40). 있으면 "최소~leadTimeDays일" — leadTimeDays 가 최대다. 없으면 한 값 */
-            @Min(1) @Max(365) Short leadTimeMinDays) {
+            @Min(1) @Max(365) Short leadTimeMinDays,
+            /** 수트 2피스(자켓 + 팬츠) 판매가(V43). 3피스는 priceKrw. 비우면 2피스는 팔지 않는다 */
+            @Positive Long twoPiecePriceKrw) {
+
+        /**
+         * 수트 구성(V43) — 사이즈에 조각을 붙이면 전부 붙이고(보통 사이즈와 섞지 않는다), 자켓 · 베스트 · 팬츠가 모두 한 사이즈 이상 있다.
+         * 섞이면 손님 화면이 사이즈 칸 하나로 그릴지 조각별로 그릴지 정할 수 없다.
+         */
+        @AssertTrue(message = "수트 구성은 자켓 · 베스트 · 팬츠 사이즈를 모두 넣어야 하고, 보통 사이즈와 섞을 수 없습니다.")
+        public boolean isSuitSkusValid() {
+            if (skus == null) {
+                return true;
+            }
+            long pieced = skus.stream().filter(k -> k != null && k.piece() != null).count();
+            if (pieced == 0) {
+                return true;
+            }
+            return pieced == skus.size() && java.util.Arrays.stream(Product.Piece.values())
+                    .allMatch(p -> skus.stream().anyMatch(k -> k.piece() == p));
+        }
+
+        @AssertTrue(message = "2피스 판매가는 수트 구성(조각별 사이즈) 상품에만 넣습니다.")
+        public boolean isTwoPiecePriceValid() {
+            return twoPiecePriceKrw == null || (skus != null && skus.stream().anyMatch(k -> k != null && k.piece() != null));
+        }
+
+        /** 같은 사이즈(수트는 같은 조각의 같은 사이즈)를 두 번 넣으면 저장할 수 없다 — 손님이 어느 칸을 고른 건지 모른다. */
+        @AssertTrue(message = "같은 사이즈를 두 번 넣었습니다.")
+        public boolean isSkuUnique() {
+            if (skus == null) {
+                return true;
+            }
+            List<String> keys = skus.stream().filter(k -> k != null && k.size() != null)
+                    .map(k -> (k.piece() == null ? "" : k.piece().name()) + "|" + k.size().trim()).toList();
+            return keys.size() == new java.util.HashSet<>(keys).size();
+        }
 
         /** 범위는 최소가 최대보다 작아야 한다("18~14" 는 400). 같으면 한 값으로 저장한다. */
         @AssertTrue(message = "제작 기간 최소가 최대보다 클 수 없습니다.")
@@ -197,7 +233,15 @@ public final class AdminProductRequests {
             Integer sortOrder,
             Boolean orderable,
             @jakarta.validation.constraints.PositiveOrZero @jakarta.validation.constraints.Max(99999) Integer stock,
-            @Valid List<Measurement> measurements) {
+            @Valid List<Measurement> measurements,
+            /** 수트 조각(V43). 비우면 보통 사이즈 */
+            Product.Piece piece) {
+
+        /** 구성 줄("3피스 · 자켓 L / 베스트 M / 팬츠 L")을 나누는 글자라 조각 사이즈에는 못 쓴다. */
+        @AssertTrue(message = "수트 조각 사이즈에는 / 와 · 를 쓸 수 없습니다.")
+        public boolean isPieceSizeValid() {
+            return piece == null || size == null || !(size.contains("/") || size.contains("·"));
+        }
     }
 
     public record Measurement(

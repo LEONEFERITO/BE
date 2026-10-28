@@ -200,14 +200,16 @@ public class OrderService {
         for (int i = 0; i < picked.size(); i++) {
             CartItem line = picked.get(i);
             Product p = byId.get(line.getProductId());
-            if (p == null || p.getStatus() != ProductStatus.PUBLISHED || p.getPriceKrw() == null
+            // 한 벌 값 — 보통 상품은 판매가, 수트 구성(V43)은 고른 구성(3피스 · 2피스)의 값. 서버가 다시 정한다
+            Long unitPrice = p == null ? null : p.priceFor(line.getSize());
+            if (p == null || p.getStatus() != ProductStatus.PUBLISHED || p.getPriceKrw() == null || unitPrice == null
                     || p.getLeadTimeDays() == null) {
                 throw new CartException("판매가 끝났거나 주문할 수 없는 상품이 있습니다. 장바구니를 확인해 주세요.");
             }
-            CartService.orderableSku(p, line.getSize(), line.getQuantity());
+            CartService.orderableSkus(p, line.getSize(), line.getQuantity());
             items.add(new OrderItem(UUID.randomUUID(), p.getId(), p.getSlug(), p.getName(),
                     p.mainImage().map(img -> mediaUrls.urlFor(img.getMedia())).orElse(null),
-                    line.getSize(), p.getPriceKrw(), line.getQuantity(), p.getLeadTimeDays(), i));
+                    line.getSize(), unitPrice, line.getQuantity(), p.getLeadTimeDays(), i));
         }
 
         long itemsAmount = items.stream().mapToLong(OrderItem::getLineAmountKrw).sum();
@@ -411,19 +413,21 @@ public class OrderService {
     private boolean takeStock(ShopOrder order) {
         boolean shown = false;
         for (OrderItem item : order.getItems()) {
-            ProductSku sku = products.findSkuForUpdate(item.getProductId(), item.getSize()).orElse(null);
-            if (sku == null || sku.getStock() == null) {
-                continue;
+            // 수트 구성(V43)은 조각마다 한 칸씩 — 하나라도 모자라면 예외로 전부 되돌아간다(트랜잭션)
+            for (ProductSku sku : products.findSkusForUpdate(item.getProductId(), item.getSize())) {
+                if (sku.getStock() == null) {
+                    continue;
+                }
+                if (!sku.canSupply(item.getQuantity())) {
+                    log.info("재고 부족으로 결제 승인 안 함 orderNumber={} size={} stock={} want={}",
+                            order.getOrderNumber(), sku.displayName(), sku.getStock(), item.getQuantity());
+                    throw new PaymentException("OUT_OF_STOCK", item.getProductName() + " " + sku.displayName()
+                            + " 사이즈가 그사이 품절되어 결제를 진행하지 않았습니다. 결제 금액은 청구되지 않습니다.");
+                }
+                int before = sku.getStock();
+                sku.take(item.getQuantity());
+                shown |= shownStockChanged(before, sku.getStock());
             }
-            if (!sku.canSupply(item.getQuantity())) {
-                log.info("재고 부족으로 결제 승인 안 함 orderNumber={} size={} stock={} want={}",
-                        order.getOrderNumber(), item.getSize(), sku.getStock(), item.getQuantity());
-                throw new PaymentException("OUT_OF_STOCK", item.getProductName() + " " + item.getSize()
-                        + " 사이즈가 그사이 품절되어 결제를 진행하지 않았습니다. 결제 금액은 청구되지 않습니다.");
-            }
-            int before = sku.getStock();
-            sku.take(item.getQuantity());
-            shown |= shownStockChanged(before, sku.getStock());
         }
         return shown;
     }
@@ -432,20 +436,21 @@ public class OrderService {
     private boolean takeStockLeniently(ShopOrder order) {
         boolean shown = false;
         for (OrderItem item : order.getItems()) {
-            ProductSku sku = products.findSkuForUpdate(item.getProductId(), item.getSize()).orElse(null);
-            if (sku == null || sku.getStock() == null) {
-                continue;
+            for (ProductSku sku : products.findSkusForUpdate(item.getProductId(), item.getSize())) {
+                if (sku.getStock() == null) {
+                    continue;
+                }
+                int before = sku.getStock();
+                if (before < item.getQuantity()) {
+                    log.error("재고보다 많이 결제됨 — 사람이 확인 orderNumber={} size={} stock={} want={}",
+                            order.getOrderNumber(), sku.displayName(), before, item.getQuantity());
+                    notifier.alertAdmins("재고보다 많이 결제됨 · " + order.getOrderNumber(), "이미 결제된 주문인데 남은 재고가 모자랍니다.\n"
+                            + "상품  " + item.getProductName() + " · " + sku.displayName() + "\n남은 재고  " + before + "\n주문 수량  "
+                            + item.getQuantity() + "\n\n제작 가능하면 그대로 진행하고, 아니면 손님에게 연락해 취소 · 환불하세요.");
+                }
+                sku.take(Math.min(before, item.getQuantity()));
+                shown |= shownStockChanged(before, sku.getStock());
             }
-            int before = sku.getStock();
-            if (before < item.getQuantity()) {
-                log.error("재고보다 많이 결제됨 — 사람이 확인 orderNumber={} size={} stock={} want={}",
-                        order.getOrderNumber(), item.getSize(), before, item.getQuantity());
-                notifier.alertAdmins("재고보다 많이 결제됨 · " + order.getOrderNumber(), "이미 결제된 주문인데 남은 재고가 모자랍니다.\n"
-                        + "상품  " + item.getProductName() + " · " + item.getSize() + "\n남은 재고  " + before + "\n주문 수량  "
-                        + item.getQuantity() + "\n\n제작 가능하면 그대로 진행하고, 아니면 손님에게 연락해 취소 · 환불하세요.");
-            }
-            sku.take(Math.min(before, item.getQuantity()));
-            shown |= shownStockChanged(before, sku.getStock());
         }
         return shown;
     }
@@ -454,13 +459,14 @@ public class OrderService {
     static boolean restock(ProductRepository products, ShopOrder order) {
         boolean shown = false;
         for (OrderItem item : order.getItems()) {
-            ProductSku sku = products.findSkuForUpdate(item.getProductId(), item.getSize()).orElse(null);
-            if (sku == null || sku.getStock() == null) {
-                continue;
+            for (ProductSku sku : products.findSkusForUpdate(item.getProductId(), item.getSize())) {
+                if (sku.getStock() == null) {
+                    continue;
+                }
+                int before = sku.getStock();
+                sku.putBack(item.getQuantity());
+                shown |= shownStockChanged(before, sku.getStock());
             }
-            int before = sku.getStock();
-            sku.putBack(item.getQuantity());
-            shown |= shownStockChanged(before, sku.getStock());
         }
         return shown;
     }

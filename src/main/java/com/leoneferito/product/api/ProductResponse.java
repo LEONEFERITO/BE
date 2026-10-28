@@ -73,7 +73,9 @@ public final class ProductResponse {
             List<Image> images,
             List<Sku> skus,
             /** 제작 기간 최소 (V40). 있으면 화면은 "최소~leadTimeDays일" */
-            Short leadTimeMinDays) {
+            Short leadTimeMinDays,
+            /** 수트 2피스(자켓 + 팬츠) 판매가 (V43). null 이면 2피스는 팔지 않는다. 3피스는 priceKrw */
+            Long twoPiecePriceKrw) {
     }
 
     /**
@@ -108,7 +110,9 @@ public final class ProductResponse {
      * {@code remaining} 은 남은 수량이 적을 때(5 이하)만 준다 — "2벌 남음". 많을 때 정확한 수량은 알리지 않는다.
      */
     public record Sku(String size, boolean orderable, boolean soldOut, Integer remaining,
-                      List<Measurement> measurements) {
+                      List<Measurement> measurements,
+                      /** 수트 조각(JACKET · VEST · PANTS, V43). null 이면 보통 사이즈 */
+                      String piece) {
     }
 
     public record Measurement(String part, BigDecimal valueCm, BigDecimal toleranceCm) {

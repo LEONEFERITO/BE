@@ -1249,4 +1249,155 @@ class OrderApiTest {
                     .andExpect(jsonPath("$.shippingFeeKrw").value(3_000));
         }
     }
+
+
+    // ── 수트 구성 (V43) ──────────────────────────────────────────
+
+    private static final String THREE = "3피스 · 자켓 L / 베스트 M / 팬츠 L";
+    private static final String TWO = "2피스 · 자켓 L / 팬츠 M";
+
+    /** 자켓 · 베스트 · 팬츠 각 M · L. 3피스 90만원, 2피스는 twoPiece(없으면 안 판다) */
+    private void suit(String slug, Long twoPiece) {
+        MediaAsset media = mediaAssets.save(new MediaAsset(UUID.randomUUID(), "suit.webp", ImageFormat.WEBP,
+                100_000L, 1200, 1600, "test/" + UUID.randomUUID() + ".webp"));
+        Product p = new Product(UUID.randomUUID(), slug, ProductCategory.SUIT, ProductLine.LEONE);
+        p.setName("차콜 수트");
+        p.setPriceKrw(900_000L);
+        p.setTwoPiecePriceKrw(twoPiece);
+        p.setLeadTimeDays((short) 18);
+        p.setFabric("울 100%");
+        p.setCare("드라이클리닝");
+        p.setNotice("차콜", "레오네페리토", "대한민국", "2026년 10월");
+        p.addImage(new ProductImage(UUID.randomUUID(), media, ProductImageKind.MAIN, "대표", 0));
+        int i = 0;
+        for (Product.Piece piece : Product.Piece.values()) {
+            for (String size : List.of("M", "L")) {
+                p.addSku(new ProductSku(UUID.randomUUID(), piece, size, i++));
+            }
+        }
+        p.publish();
+        products.saveAndFlush(p);
+    }
+
+    private Integer pieceStock(String slug, String piece, String size) {
+        return jdbc.queryForObject("SELECT s.stock FROM product_sku s JOIN product p ON p.id = s.product_id "
+                + "WHERE p.slug = ? AND s.piece = ? AND s.size = ?", Integer.class, slug, piece, size);
+    }
+
+    private void setPieceStock(String slug, String piece, String size, Integer stock) {
+        jdbc.update("UPDATE product_sku SET stock = ? WHERE piece = ? AND size = ? "
+                + "AND product_id = (SELECT id FROM product WHERE slug = ?)", stock, piece, size, slug);
+    }
+
+    @Nested
+    @DisplayName("수트 구성 (3피스 · 2피스, 조각별 사이즈)")
+    class SuitSet {
+
+        @Test
+        @DisplayName("3피스 · 2피스를 담으면 값은 서버가 구성으로 정하고, 주문에도 그 값 · 구성 줄이 그대로 남는다")
+        void pricesByComposition() throws Exception {
+            suit("ot-suit", 700_000L);
+            String a = addToCart("ot-suit", THREE, 1);
+            String b = addToCart("ot-suit", TWO, 1);
+            mockMvc.perform(get("/api/cart").cookie(buyer))
+                    .andExpect(jsonPath("$.items.length()").value(2))
+                    .andExpect(jsonPath("$.items[0].size").value(THREE))
+                    .andExpect(jsonPath("$.items[0].unitPriceKrw").value(900_000))
+                    .andExpect(jsonPath("$.items[1].unitPriceKrw").value(700_000))
+                    .andExpect(jsonPath("$.itemsAmountKrw").value(1_600_000));
+
+            Object[] o = createOrder(a, b);
+            assertThat((long) o[1]).isEqualTo(1_600_000L); // 50만원 이상 무료 배송
+            mockMvc.perform(get("/api/orders/" + o[0]).cookie(buyer))
+                    .andExpect(jsonPath("$.items[0].size").value(THREE))
+                    .andExpect(jsonPath("$.items[1].size").value(TWO));
+
+            // 공개 상세 — 조각이 붙은 사이즈와 2피스 값이 나간다
+            mockMvc.perform(get("/api/products/ot-suit"))
+                    .andExpect(jsonPath("$.twoPiecePriceKrw").value(700_000))
+                    .andExpect(jsonPath("$.skus[0].piece").value("JACKET"))
+                    .andExpect(jsonPath("$.skus[2].piece").value("VEST"));
+        }
+
+        @Test
+        @DisplayName("모르는 구성 줄 · 없는 조각 사이즈 · 빠진 조각 · 보통 사이즈 · 팔지 않는 2피스는 담기지 않는다")
+        void rejectsUnknown() throws Exception {
+            suit("ot-suit", null);
+            for (String size : List.of("L", "3피스 · 자켓 XL / 베스트 M / 팬츠 L", "3피스 · 자켓 L / 팬츠 L",
+                    "3피스 ·  자켓 L / 베스트 M / 팬츠 L", "3피스 · 팬츠 L / 베스트 M / 자켓 L", TWO)) {
+                send(buyer, post("/api/cart/items"),
+                        "{\"slug\":\"ot-suit\",\"size\":\"%s\",\"quantity\":1}".formatted(size))
+                        .andExpect(status().isBadRequest())
+                        .andExpect(jsonPath("$.code").value("CART_INVALID"));
+            }
+            mockMvc.perform(get("/api/products/ot-suit")).andExpect(jsonPath("$.twoPiecePriceKrw").doesNotExist());
+            // 보통 상품에 구성 줄을 보내도 안 된다
+            send(buyer, post("/api/cart/items"), "{\"slug\":\"ot-shirt\",\"size\":\"%s\",\"quantity\":1}".formatted(THREE))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @DisplayName("조각별 재고 — 팬츠 L 이 1벌이면 2벌은 안 담기고, 결제하면 조각마다 줄고, 취소하면 돌아온다")
+        void stockPerPiece() throws Exception {
+            suit("ot-suit", 700_000L);
+            setPieceStock("ot-suit", "PANTS", "L", 1);
+            setPieceStock("ot-suit", "JACKET", "L", 5);
+
+            send(buyer, post("/api/cart/items"),
+                    "{\"slug\":\"ot-suit\",\"size\":\"%s\",\"quantity\":2}".formatted(THREE))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.message").value("팬츠 L 사이즈는 1벌 남았습니다. 수량을 줄여 주세요."));
+
+            Object[] o = createOrder(addToCart("ot-suit", THREE, 1));
+            confirm((String) o[0], "pk_" + UUID.randomUUID(), (long) o[1]).andExpect(status().isOk());
+            assertThat(pieceStock("ot-suit", "PANTS", "L")).isZero();
+            assertThat(pieceStock("ot-suit", "JACKET", "L")).isEqualTo(4);
+            assertThat(pieceStock("ot-suit", "VEST", "M")).isNull(); // 세지 않는 조각은 그대로
+
+            // 팬츠 L 품절 — 같은 구성은 이제 담기지 않는다
+            send(buyer, post("/api/cart/items"),
+                    "{\"slug\":\"ot-suit\",\"size\":\"%s\",\"quantity\":1}".formatted(THREE))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.message").value("팬츠 L 사이즈는 품절입니다."));
+
+            send(buyer, post("/api/orders/" + o[0] + "/cancel"), null).andExpect(status().isOk());
+            assertThat(pieceStock("ot-suit", "PANTS", "L")).isEqualTo(1);
+            assertThat(pieceStock("ot-suit", "JACKET", "L")).isEqualTo(5);
+        }
+
+        @Test
+        @DisplayName("교환은 같은 구성 안에서 조각별 사이즈만 바꾼다 — 3피스를 2피스로는 못 바꾼다")
+        void exchangeWithinComposition() throws Exception {
+            suit("ot-suit", 700_000L);
+            Cookie admin = login(mockMvc, ADMIN, PASSWORD);
+            Object[] o = createOrder(addToCart("ot-suit", THREE, 1));
+            confirm((String) o[0], "pk_" + UUID.randomUUID(), (long) o[1]).andExpect(status().isOk());
+            String no = (String) o[0];
+            send(admin, post("/api/admin/orders/" + no + "/ship"), "{\"courier\":\"CJ대한통운\",\"trackingNumber\":\"111\"}")
+                    .andExpect(status().isNoContent());
+            send(admin, post("/api/admin/orders/" + no + "/deliver"), null).andExpect(status().isNoContent());
+
+            requestReturn(no, "EXCHANGE", "SIZE", firstItemId(no), 1, "2피스 · 자켓 L / 팬츠 M")
+                    .andExpect(status().isBadRequest());
+            requestReturn(no, "EXCHANGE", "SIZE", firstItemId(no), 1, "3피스 · 자켓 L / 베스트 XL / 팬츠 L")
+                    .andExpect(status().isBadRequest());
+            requestReturn(no, "EXCHANGE", "SIZE", firstItemId(no), 1, "3피스 · 자켓 L / 베스트 L / 팬츠 M")
+                    .andExpect(status().isCreated())
+                    .andExpect(jsonPath("$.items[0].size").value(THREE))
+                    .andExpect(jsonPath("$.items[0].exchangeSize").value("3피스 · 자켓 L / 베스트 L / 팬츠 M"));
+        }
+
+        @Test
+        @DisplayName("결제 직전에 조각 하나가 품절되면 결제를 보내지 않는다 — 다른 조각 재고도 그대로")
+        void soldOutBeforePayment() throws Exception {
+            suit("ot-suit", 700_000L);
+            setPieceStock("ot-suit", "JACKET", "L", 3);
+            Object[] o = createOrder(addToCart("ot-suit", THREE, 1));
+            setPieceStock("ot-suit", "PANTS", "L", 0);
+            confirm((String) o[0], "pk_" + UUID.randomUUID(), (long) o[1])
+                    .andExpect(status().is4xxClientError());
+            assertThat(tossCalls("/confirm")).isZero();
+            assertThat(pieceStock("ot-suit", "JACKET", "L")).isEqualTo(3);
+        }
+    }
 }
