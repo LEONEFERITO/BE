@@ -118,7 +118,7 @@ public class ProductQueryService {
                         .toList(),
                 p.getLeadTimeMinDays(),
                 // 2피스를 실제로 팔 때만 — 값만 있고 조각이 모자라면 손님 화면에 고를 길을 내지 않는다
-                p.offers(Product.SuitSet.TWO) ? p.getTwoPiecePriceKrw() : null);
+                p.offers(Product.SuitSet.TWO) ? p.twoPiecePriceKrw() : null);
     }
 
     /** 차트가 없으면 null 을 준다. 화면은 그 자리를 비우고 안내 문구를 띄운다. */

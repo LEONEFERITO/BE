@@ -125,7 +125,7 @@ public class AdminProductService {
         copy.setSummary(src.getSummary());
         copy.setPriceKrw(src.getPriceKrw());
         copy.setListPriceKrw(src.getListPriceKrw());
-        copy.setTwoPiecePriceKrw(src.getTwoPiecePriceKrw());
+        copy.setVestPriceKrw(src.getVestPriceKrw());
         copy.setDescription(src.getDescription());
         copy.setIntent(src.getIntent());
         copy.setFeatures(src.getFeatures());
@@ -232,7 +232,7 @@ public class AdminProductService {
         product.setSummary(request.summary());
         product.setPriceKrw(request.priceKrw());
         product.setListPriceKrw(request.listPriceKrw());
-        product.setTwoPiecePriceKrw(request.twoPiecePriceKrw());
+        product.setVestPriceKrw(request.vestPriceKrw());
         product.setDescription(request.description());
         product.setIntent(request.intent());
         product.setFeatures(request.features());

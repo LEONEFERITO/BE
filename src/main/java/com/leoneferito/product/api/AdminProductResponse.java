@@ -59,8 +59,8 @@ public final class AdminProductResponse {
             Internal internal,
             /** 제작 기간 최소 (V40). leadTimeDays 가 최대 */
             Short leadTimeMinDays,
-            /** 수트 2피스 판매가 (V43) */
-            Long twoPiecePriceKrw) {
+            /** 수트 베스트 금액 (V44) — 2피스 = 판매가 − 이 값 */
+            Long vestPriceKrw) {
     }
 
     public record Internal(String adminName, String fabricSupplier, String fabricCollection, String fabricCode,

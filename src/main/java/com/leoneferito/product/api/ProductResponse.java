@@ -74,7 +74,7 @@ public final class ProductResponse {
             List<Sku> skus,
             /** 제작 기간 최소 (V40). 있으면 화면은 "최소~leadTimeDays일" */
             Short leadTimeMinDays,
-            /** 수트 2피스(자켓 + 팬츠) 판매가 (V43). null 이면 2피스는 팔지 않는다. 3피스는 priceKrw */
+            /** 수트 2피스(자켓 + 팬츠) 한 벌 값 — 판매가 − 베스트 금액(V44), 베스트가 없는 수트는 판매가. null 이면 2피스는 팔지 않는다 */
             Long twoPiecePriceKrw) {
     }
 

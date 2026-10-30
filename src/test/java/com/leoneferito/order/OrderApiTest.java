@@ -1256,14 +1256,15 @@ class OrderApiTest {
     private static final String THREE = "3피스 · 자켓 L / 베스트 M / 팬츠 L";
     private static final String TWO = "2피스 · 자켓 L / 팬츠 M";
 
-    /** 자켓 · 베스트 · 팬츠 각 M · L. 3피스 90만원, 2피스는 twoPiece(없으면 안 판다) */
+    /** 자켓 · 베스트 · 팬츠 각 M · L(레오네). 3피스 90만원, 2피스는 twoPiece 원 — 베스트 금액을 (90만원 − twoPiece)로 넣는다. null 이면 2피스는 안 판다 */
     private void suit(String slug, Long twoPiece) {
         MediaAsset media = mediaAssets.save(new MediaAsset(UUID.randomUUID(), "suit.webp", ImageFormat.WEBP,
                 100_000L, 1200, 1600, "test/" + UUID.randomUUID() + ".webp"));
         Product p = new Product(UUID.randomUUID(), slug, ProductCategory.SUIT, ProductLine.LEONE);
         p.setName("차콜 수트");
         p.setPriceKrw(900_000L);
-        p.setTwoPiecePriceKrw(twoPiece);
+        // 2피스 값을 베스트 금액으로 바꿔 넣는다(V44): 베스트 = 판매가 − 2피스
+        p.setVestPriceKrw(twoPiece == null ? null : 900_000L - twoPiece);
         p.setLeadTimeDays((short) 18);
         p.setFabric("울 100%");
         p.setCare("드라이클리닝");
@@ -1317,6 +1318,35 @@ class OrderApiTest {
                     .andExpect(jsonPath("$.twoPiecePriceKrw").value(700_000))
                     .andExpect(jsonPath("$.skus[0].piece").value("JACKET"))
                     .andExpect(jsonPath("$.skus[2].piece").value("VEST"));
+        }
+
+        @Test
+        @DisplayName("페리토 수트(베스트 없음) — 2피스만 팔고 값은 판매가 그대로, 3피스는 담기지 않는다")
+        void feritoTwoPieceOnly() throws Exception {
+            MediaAsset media = mediaAssets.save(new MediaAsset(UUID.randomUUID(), "suit.webp", ImageFormat.WEBP,
+                    100_000L, 1200, 1600, "test/" + UUID.randomUUID() + ".webp"));
+            Product p = new Product(UUID.randomUUID(), "ot-ferito-suit", ProductCategory.SUIT, ProductLine.FERITO);
+            p.setName("블랙 수트");
+            p.setPriceKrw(680_000L);
+            p.setLeadTimeDays((short) 18);
+            p.setFabric("울 100%");
+            p.setCare("드라이클리닝");
+            p.setNotice("블랙", "레오네페리토", "대한민국", "2026년 10월");
+            p.addImage(new ProductImage(UUID.randomUUID(), media, ProductImageKind.MAIN, "대표", 0));
+            int i = 0;
+            for (Product.Piece piece : List.of(Product.Piece.JACKET, Product.Piece.PANTS)) {
+                for (String size : List.of("M", "L")) {
+                    p.addSku(new ProductSku(UUID.randomUUID(), piece, size, i++));
+                }
+            }
+            p.publish();
+            products.saveAndFlush(p);
+
+            mockMvc.perform(get("/api/products/ot-ferito-suit")).andExpect(jsonPath("$.twoPiecePriceKrw").value(680_000));
+            addToCart("ot-ferito-suit", "2피스 · 자켓 L / 팬츠 M", 1);
+            mockMvc.perform(get("/api/cart").cookie(buyer)).andExpect(jsonPath("$.items[0].unitPriceKrw").value(680_000));
+            send(buyer, post("/api/cart/items"), "{\"slug\":\"ot-ferito-suit\",\"size\":\"%s\",\"quantity\":1}".formatted(THREE))
+                    .andExpect(status().isBadRequest());
         }
 
         @Test

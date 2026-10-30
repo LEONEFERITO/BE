@@ -72,6 +72,10 @@ public class ProductImportService {
 
     private static final Map<String, ProductCategory> CATEGORY = Map.ofEntries(
             Map.entry("수트", ProductCategory.SUIT), Map.entry("정장", ProductCategory.SUIT),
+            // 조끼 단품은 수트 메뉴 안에 수트 셋업과 함께 판다(2026-10-31 디자이너 "조끼 카테고리는 따로 없어도")
+            Map.entry("베스트", ProductCategory.SUIT), Map.entry("조끼", ProductCategory.SUIT),
+            Map.entry("vest", ProductCategory.SUIT), Map.entry("vests", ProductCategory.SUIT),
+            Map.entry("waistcoat", ProductCategory.SUIT),
             Map.entry("재킷", ProductCategory.JACKET), Map.entry("자켓", ProductCategory.JACKET),
             Map.entry("트라우저", ProductCategory.TROUSERS), Map.entry("바지", ProductCategory.TROUSERS),
             Map.entry("셔츠", ProductCategory.SHIRT), Map.entry("신발", ProductCategory.SHOES), Map.entry("구두", ProductCategory.SHOES),
@@ -328,7 +332,7 @@ public class ProductImportService {
                         c.text(Col.FABRIC_CODE, AdminProductRequests.NOTICE_MAX),
                         c.text(Col.WORKSHOP, AdminProductRequests.NOTICE_MAX), c.won(Col.COST), subCategory),
                 leadMin == null ? null : leadMin.shortValue(),
-                // 수트 구성(조각별 사이즈 · 2피스 판매가)은 엑셀에 칸이 없다 — 등록 뒤 관리자 상품 화면에서 정한다
+                // 수트 구성(조각별 사이즈 · 베스트 금액)은 엑셀에 칸이 없다 — 등록 뒤 관리자 상품 화면에서 정한다
                 null);
 
         if (errors.size() == before) {

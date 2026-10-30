@@ -70,9 +70,12 @@ public class Product {
     @Column(name = "list_price_krw")
     private Long listPriceKrw;
 
-    /** 수트 2피스(자켓 + 팬츠) 판매가 (V43). 3피스는 {@link #priceKrw}. {@code null} 이면 2피스는 팔지 않는다. */
-    @Column(name = "two_piece_price_krw")
-    private Long twoPiecePriceKrw;
+    /**
+     * 수트 베스트 금액 (V44, 2026-10-31 "베스트 금액만큼 빠지게"). 2피스 = {@link #priceKrw} − 이 값.
+     * {@code null} 이면 베스트가 있는 수트는 3피스만 판다. 베스트가 없는 수트(페리토)는 판매가가 곧 2피스 값이다.
+     */
+    @Column(name = "vest_price_krw")
+    private Long vestPriceKrw;
 
     /** 목록 카드용 한 줄. 상세 본문(description)과 쓰임이 다르다 — V6 주석 참고. */
     @Column
@@ -384,12 +387,12 @@ public class Product {
         this.listPriceKrw = listPriceKrw;
     }
 
-    public Long getTwoPiecePriceKrw() {
-        return twoPiecePriceKrw;
+    public Long getVestPriceKrw() {
+        return vestPriceKrw;
     }
 
-    public void setTwoPiecePriceKrw(Long twoPiecePriceKrw) {
-        this.twoPiecePriceKrw = twoPiecePriceKrw;
+    public void setVestPriceKrw(Long vestPriceKrw) {
+        this.vestPriceKrw = vestPriceKrw;
     }
 
     public String getSummary() {
@@ -618,7 +621,7 @@ public class Product {
         }
     }
 
-    /** 구성 — 3피스(자켓 + 베스트 + 팬츠, 값은 판매가) · 2피스(자켓 + 팬츠, 값은 2피스 판매가). */
+    /** 구성 — 3피스(자켓 + 베스트 + 팬츠, 값은 판매가) · 2피스(자켓 + 팬츠, 값은 판매가 − 베스트 금액 · 베스트가 없으면 판매가). */
     public enum SuitSet {
         THREE("3피스", List.of(Piece.JACKET, Piece.VEST, Piece.PANTS)),
         TWO("2피스", List.of(Piece.JACKET, Piece.PANTS));
@@ -694,9 +697,28 @@ public class Product {
         return skus.stream().anyMatch(s -> s.getPiece() != null);
     }
 
+    /** 베스트 사이즈가 있는가 — 3피스가 되는 수트(레오네). 페리토 수트는 자켓 + 팬츠뿐이다. */
+    public boolean hasVest() {
+        return skus.stream().anyMatch(s -> s.getPiece() == Piece.VEST);
+    }
+
+    /**
+     * 2피스(자켓 + 팬츠) 한 벌 값 (V44). 베스트가 있는 수트는 판매가 − 베스트 금액(금액이 없거나 판매가 이상이면 2피스를 팔지 않는다),
+     * 베스트가 없는 수트는 판매가 그대로.
+     */
+    public Long twoPiecePriceKrw() {
+        if (priceKrw == null) {
+            return null;
+        }
+        if (!hasVest()) {
+            return priceKrw;
+        }
+        return vestPriceKrw != null && vestPriceKrw < priceKrw ? priceKrw - vestPriceKrw : null;
+    }
+
     /** 이 구성을 파는가 — 수트 구성 상품이고, 그 구성의 값이 있고, 구성의 조각마다 사이즈가 하나 이상 있다. */
     public boolean offers(SuitSet set) {
-        Long price = set == SuitSet.THREE ? priceKrw : twoPiecePriceKrw;
+        Long price = set == SuitSet.THREE ? priceKrw : twoPiecePriceKrw();
         return isSuitSet() && price != null
                 && set.pieces().stream().allMatch(p -> skus.stream().anyMatch(s -> s.getPiece() == p));
     }
@@ -711,7 +733,7 @@ public class Product {
         }
         return SuitChoice.parse(size)
                 .filter(c -> offers(c.set()))
-                .map(c -> c.set() == SuitSet.THREE ? priceKrw : twoPiecePriceKrw)
+                .map(c -> c.set() == SuitSet.THREE ? priceKrw : twoPiecePriceKrw())
                 .orElse(null);
     }
 

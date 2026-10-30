@@ -97,7 +97,7 @@ public class AdminProductQueryService {
                 new AdminProductResponse.Internal(p.getAdminName(), p.getFabricSupplier(), p.getFabricCollection(),
                         p.getFabricCode(), p.getWorkshop(), p.getCostKrw(), p.getSubCategory()),
                 p.getLeadTimeMinDays(),
-                p.getTwoPiecePriceKrw());
+                p.getVestPriceKrw());
     }
 
     private AdminProductResponse.Sku toSku(ProductSku sku) {

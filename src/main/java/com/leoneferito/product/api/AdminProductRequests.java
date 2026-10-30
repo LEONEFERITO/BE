@@ -123,14 +123,18 @@ public final class AdminProductRequests {
             @Valid Internal internal,
             /** 제작 기간 최소(V40). 있으면 "최소~leadTimeDays일" — leadTimeDays 가 최대다. 없으면 한 값 */
             @Min(1) @Max(365) Short leadTimeMinDays,
-            /** 수트 2피스(자켓 + 팬츠) 판매가(V43). 3피스는 priceKrw. 비우면 2피스는 팔지 않는다 */
-            @Positive Long twoPiecePriceKrw) {
+            /** 수트 베스트 금액(V44). 2피스 = 판매가 − 이 값. 비우면 3피스만 판다. 베스트가 있는 수트(레오네)에만 */
+            @Positive Long vestPriceKrw) {
+
+        private boolean hasPiece(Product.Piece piece) {
+            return skus != null && skus.stream().anyMatch(k -> k != null && k.piece() == piece);
+        }
 
         /**
-         * 수트 구성(V43) — 사이즈에 조각을 붙이면 전부 붙이고(보통 사이즈와 섞지 않는다), 자켓 · 베스트 · 팬츠가 모두 한 사이즈 이상 있다.
-         * 섞이면 손님 화면이 사이즈 칸 하나로 그릴지 조각별로 그릴지 정할 수 없다.
+         * 수트 구성(V43 · V44) — 사이즈에 조각을 붙이면 전부 붙이고(보통 사이즈와 섞지 않는다), 자켓 · 팬츠가 한 사이즈 이상 있다.
+         * 베스트는 있어도 되고 없어도 된다(없으면 2피스만 — 페리토). 섞이면 손님 화면이 칸을 정할 수 없다.
          */
-        @AssertTrue(message = "수트 구성은 자켓 · 베스트 · 팬츠 사이즈를 모두 넣어야 하고, 보통 사이즈와 섞을 수 없습니다.")
+        @AssertTrue(message = "수트 구성은 자켓 · 팬츠 사이즈를 넣어야 하고, 보통 사이즈와 섞을 수 없습니다.")
         public boolean isSuitSkusValid() {
             if (skus == null) {
                 return true;
@@ -139,13 +143,19 @@ public final class AdminProductRequests {
             if (pieced == 0) {
                 return true;
             }
-            return pieced == skus.size() && java.util.Arrays.stream(Product.Piece.values())
-                    .allMatch(p -> skus.stream().anyMatch(k -> k.piece() == p));
+            return pieced == skus.size() && hasPiece(Product.Piece.JACKET) && hasPiece(Product.Piece.PANTS);
         }
 
-        @AssertTrue(message = "2피스 판매가는 수트 구성(조각별 사이즈) 상품에만 넣습니다.")
-        public boolean isTwoPiecePriceValid() {
-            return twoPiecePriceKrw == null || (skus != null && skus.stream().anyMatch(k -> k != null && k.piece() != null));
+        /** 3피스는 레오네에만 있다(2026-10-31 디자이너 답변) — 페리토 수트에는 베스트를 넣지 못한다. */
+        @AssertTrue(message = "3피스(베스트)는 레오네 라인에만 있습니다. 페리토 수트는 자켓 · 팬츠만 넣어 주세요.")
+        public boolean isVestLineValid() {
+            return line != ProductLine.FERITO || !hasPiece(Product.Piece.VEST);
+        }
+
+        /** 베스트 금액은 베스트가 있는 수트에만, 판매가보다 작게 — 2피스 값(판매가 − 베스트)이 0 이하가 되면 안 된다. */
+        @AssertTrue(message = "베스트 금액은 베스트 사이즈가 있는 수트에만, 판매가보다 작게 넣습니다.")
+        public boolean isVestPriceValid() {
+            return vestPriceKrw == null || (hasPiece(Product.Piece.VEST) && (priceKrw == null || vestPriceKrw < priceKrw));
         }
 
         /** 같은 사이즈(수트는 같은 조각의 같은 사이즈)를 두 번 넣으면 저장할 수 없다 — 손님이 어느 칸을 고른 건지 모른다. */

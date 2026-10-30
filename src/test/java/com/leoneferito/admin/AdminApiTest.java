@@ -356,7 +356,8 @@ class AdminApiTest {
         void suitSet() throws Exception {
             String suit = saveBody("suit-set")
                     .replace("\"category\": \"SHIRT\"", "\"category\": \"SUIT\"")
-                    .replace("\"priceKrw\": 290000,", "\"priceKrw\": 900000, \"twoPiecePriceKrw\": 700000,")
+                    .replace("\"priceKrw\": 290000,", "\"priceKrw\": 900000, \"vestPriceKrw\": 200000,")
+                    .replace("\"line\": \"FERITO\"", "\"line\": \"LEONE\"")
                     .replaceAll("(?s)\"skus\": \\[.*?\\]\\s*\\}\\s*$", """
                             "skus": [
                                 { "size": "M", "piece": "JACKET" }, { "size": "L", "piece": "JACKET", "stock": 2 },
@@ -371,17 +372,19 @@ class AdminApiTest {
                     .andReturn();
             String id = com.jayway.jsonpath.JsonPath.read(r.getResponse().getContentAsString(), "$.id");
             mockMvc.perform(asAdmin(get("/api/admin/products/" + id)))
-                    .andExpect(jsonPath("$.twoPiecePriceKrw").value(700000))
+                    .andExpect(jsonPath("$.vestPriceKrw").value(200000))
                     .andExpect(jsonPath("$.skus.length()").value(5))
                     .andExpect(jsonPath("$.skus[0].piece").value("JACKET"))
                     .andExpect(jsonPath("$.skus[1].stock").value(2))
                     .andExpect(jsonPath("$.skus[2].piece").value("VEST"));
 
-            // 보통 사이즈와 섞기 · 베스트 빠짐 · 보통 상품에 2피스 값 · 조각 사이즈에 "/" · 같은 조각 같은 사이즈 두 번
+            // 보통 사이즈와 섞기 · 팬츠 빠짐 · 보통 상품에 베스트 금액 · 베스트 금액 ≥ 판매가 · 페리토에 베스트 · 조각 사이즈에 "/" · 같은 조각 같은 사이즈 두 번
             for (String bad : List.of(
                     suit.replace("{ \"size\": \"M\", \"piece\": \"VEST\" }", "{ \"size\": \"M\" }"),
-                    suit.replace("{ \"size\": \"M\", \"piece\": \"VEST\" },", ""),
-                    saveBody("two-piece-plain").replace("\"priceKrw\": 290000,", "\"priceKrw\": 290000, \"twoPiecePriceKrw\": 100000,"),
+                    suit.replace("{ \"size\": \"M\", \"piece\": \"PANTS\" }, { \"size\": \"L\", \"piece\": \"PANTS\" }", "{ \"size\": \"L\", \"piece\": \"VEST\" }"),
+                    saveBody("two-piece-plain").replace("\"priceKrw\": 290000,", "\"priceKrw\": 290000, \"vestPriceKrw\": 100000,"),
+                    suit.replace("\"vestPriceKrw\": 200000", "\"vestPriceKrw\": 900000"),
+                    suit.replace("\"line\": \"LEONE\"", "\"line\": \"FERITO\""),
                     suit.replace("{ \"size\": \"M\", \"piece\": \"VEST\" }", "{ \"size\": \"M/L\", \"piece\": \"VEST\" }"),
                     suit.replace("{ \"size\": \"L\", \"piece\": \"PANTS\" }", "{ \"size\": \"M\", \"piece\": \"PANTS\" }"))) {
                 mockMvc.perform(asAdmin(post("/api/admin/products"))
@@ -1213,8 +1216,9 @@ class AdminApiTest {
         @Test
         @DisplayName("대분류는 한글 · 영문 대소문자 · 복수 모두 같은 분류 — JACKET · Jacket · jacket · 자켓 · Shirts · 바지")
         void categorySpellings() throws Exception {
-            String[] spellings = {"JACKET", "Jacket", "jacket", "자켓", "Shirts", "바지"};
-            String[] expected = {"JACKET", "JACKET", "JACKET", "JACKET", "SHIRT", "TROUSERS"};
+            // 베스트 · 조끼 · Vest 는 수트 메뉴로(2026-10-31 — 조끼 단품은 수트 셋업과 함께)
+            String[] spellings = {"JACKET", "Jacket", "jacket", "자켓", "Shirts", "바지", "베스트", "Vest"};
+            String[] expected = {"JACKET", "JACKET", "JACKET", "JACKET", "SHIRT", "TROUSERS", "SUIT", "SUIT"};
             String[][] rows = new String[spellings.length][];
             for (int i = 0; i < spellings.length; i++) {
                 rows[i] = new String[] {"상품 " + i, "", "페리토", spellings[i], "", "", "", "", "", "", "", "", "", "", "", "", "",

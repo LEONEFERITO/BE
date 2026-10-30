@@ -25,9 +25,11 @@ public final class AuthRequests {
             @NotBlank @Size(max = 1000) String password,
             @NotBlank @Size(max = 50) String name,
             /*
-             * 전화번호는 선택이다. 형식은 숫자와 하이픈만 허용한다 —
-             * 국가별 형식을 강하게 검증하면 멀쩡한 번호가 거부된다.
+             * 전화번호는 필수다(2026-10-31 디자이너 "가입할 때 전화번호 필수로" — 주문 · 배송 연락).
+             * 형식은 숫자와 하이픈만 허용한다 — 국가별 형식을 강하게 검증하면 멀쩡한 번호가 거부된다.
+             * 간편가입(카카오 · 네이버)은 이 요청을 거치지 않는다 — 번호를 주지 않는 곳이라 마이페이지에서 채운다.
              */
+            @NotBlank(message = "휴대폰 번호를 입력해 주세요.")
             @Pattern(regexp = "^[0-9-]{9,20}$", message = "전화번호 형식이 올바르지 않습니다.")
             String phone,
             /*

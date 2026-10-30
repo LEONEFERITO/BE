@@ -311,10 +311,23 @@ class AuthApiTest {
                     ",\"agreeTerms\":false,\"over14\":true"}) {   // 약관 거부
                 mockMvc.perform(withCsrf(post("/api/auth/signup"))
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content("{\"email\":\"teen@example.com\",\"password\":\"long enough pw\",\"name\":\"김\"" + flags + "}"))
+                                .content("{\"email\":\"teen@example.com\",\"password\":\"long enough pw\",\"name\":\"김\",\"phone\":\"010-1234-5678\"" + flags + "}"))
                         .andExpect(status().isBadRequest());
             }
             assertThat(members.findByEmail("teen@example.com")).isEmpty();
+        }
+
+        @Test
+        @DisplayName("휴대폰 번호 없이는 가입되지 않는다 (2026-10-31 필수)")
+        void phoneRequired() throws Exception {
+            for (String phone : new String[] {"", ",\"phone\":\"\"", ",\"phone\":\"abc\""}) {
+                mockMvc.perform(withCsrf(post("/api/auth/signup"))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"email\":\"nophone@example.com\",\"password\":\"long enough pw\",\"name\":\"김\""
+                                        + phone + ",\"agreeTerms\":true,\"over14\":true}"))
+                        .andExpect(status().isBadRequest());
+            }
+            assertThat(members.findByEmail("nophone@example.com")).isEmpty();
         }
 
         @Test
@@ -342,7 +355,7 @@ class AuthApiTest {
             mockMvc.perform(withCsrf(post("/api/auth/signup"))
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
-                                    {"email":"HONG@Example.com","password":"another password here","name":"홍길동","agreeTerms":true,"over14":true}
+                                    {"email":"HONG@Example.com","password":"another password here","name":"홍길동","phone":"010-1234-5678","agreeTerms":true,"over14":true}
                                     """))
                     .andExpect(status().isConflict())
                     .andExpect(jsonPath("$.code").value("EMAIL_ALREADY_REGISTERED"));
@@ -354,7 +367,7 @@ class AuthApiTest {
             String body = mockMvc.perform(withCsrf(post("/api/auth/signup"))
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
-                                    {"email":"hong@example.com","password":"another password here","name":"홍길동","agreeTerms":true,"over14":true}
+                                    {"email":"hong@example.com","password":"another password here","name":"홍길동","phone":"010-1234-5678","agreeTerms":true,"over14":true}
                                     """))
                     .andExpect(status().isConflict())
                     .andReturn().getResponse().getContentAsString();
@@ -368,7 +381,7 @@ class AuthApiTest {
             mockMvc.perform(withCsrf(post("/api/auth/signup"))
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
-                                    {"email":"new@example.com","password":"short","name":"김","agreeTerms":true,"over14":true}
+                                    {"email":"new@example.com","password":"short","name":"김","phone":"010-1234-5678","agreeTerms":true,"over14":true}
                                     """))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.code").value("WEAK_PASSWORD"))
@@ -387,7 +400,7 @@ class AuthApiTest {
             mockMvc.perform(withCsrf(post("/api/auth/signup"))
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
-                                    {"email":"long@example.com","password":"%s","name":"김","agreeTerms":true,"over14":true}
+                                    {"email":"long@example.com","password":"%s","name":"김","phone":"010-1234-5678","agreeTerms":true,"over14":true}
                                     """.formatted(tooLong)))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.code").value("WEAK_PASSWORD"));
@@ -399,7 +412,7 @@ class AuthApiTest {
             mockMvc.perform(withCsrf(post("/api/auth/signup"))
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
-                                    {"email":"minsu@example.com","password":"minsu12345678","name":"김","agreeTerms":true,"over14":true}
+                                    {"email":"minsu@example.com","password":"minsu12345678","name":"김","phone":"010-1234-5678","agreeTerms":true,"over14":true}
                                     """))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.code").value("WEAK_PASSWORD"));
