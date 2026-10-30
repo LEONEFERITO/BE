@@ -245,12 +245,19 @@ public final class AdminProductRequests {
             @jakarta.validation.constraints.PositiveOrZero @jakarta.validation.constraints.Max(99999) Integer stock,
             @Valid List<Measurement> measurements,
             /** 수트 조각(V43). 비우면 보통 사이즈 */
-            Product.Piece piece) {
+            Product.Piece piece,
+            /** 이 사이즈를 누르면 보여 줄 메인 사진 칸(V45). 비우면 사진을 바꾸지 않는다 */
+            ProductImageKind imageKind) {
 
         /** 구성 줄("3피스 · 자켓 L / 베스트 M / 팬츠 L")을 나누는 글자라 조각 사이즈에는 못 쓴다. */
         @AssertTrue(message = "수트 조각 사이즈에는 / 와 · 를 쓸 수 없습니다.")
         public boolean isPieceSizeValid() {
             return piece == null || size == null || !(size.contains("/") || size.contains("·"));
+        }
+
+        @AssertTrue(message = "사이즈 사진은 메인 사진 다섯 칸 중에서 고를 수 있습니다.")
+        public boolean isImageKindValid() {
+            return imageKind == null || (imageKind != ProductImageKind.CUTOUT && imageKind != ProductImageKind.STORY);
         }
     }
 

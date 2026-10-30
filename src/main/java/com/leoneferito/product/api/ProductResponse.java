@@ -112,7 +112,9 @@ public final class ProductResponse {
     public record Sku(String size, boolean orderable, boolean soldOut, Integer remaining,
                       List<Measurement> measurements,
                       /** 수트 조각(JACKET · VEST · PANTS, V43). null 이면 보통 사이즈 */
-                      String piece) {
+                      String piece,
+                      /** 이 사이즈를 누르면 보여 줄 사진 주소(V45). 고른 칸에 사진이 없거나 고르지 않았으면 null */
+                      String imageUrl) {
     }
 
     public record Measurement(String part, BigDecimal valueCm, BigDecimal toleranceCm) {

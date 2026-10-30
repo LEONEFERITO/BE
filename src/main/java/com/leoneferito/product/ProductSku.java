@@ -59,6 +59,11 @@ public class ProductSku {
     @Column(name = "stock")
     private Integer stock;
 
+    /** 이 사이즈를 누르면 보여 줄 메인 사진 칸 (V45). null 이면 사진을 바꾸지 않는다. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "image_kind")
+    private ProductImageKind imageKind;
+
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
     private Instant createdAt;
 
@@ -166,6 +171,15 @@ public class ProductSku {
 
     public void setOrderable(boolean orderable) {
         this.orderable = orderable;
+    }
+
+    public ProductImageKind getImageKind() {
+        return imageKind;
+    }
+
+    /** 메인 사진 다섯 칸(대표 · 착용 · 디테일 · 추가 둘)만. 누끼 · 상세 이미지는 받지 않는다(요청 검증 · DB CHECK). */
+    public void setImageKind(ProductImageKind imageKind) {
+        this.imageKind = imageKind;
     }
 
     public List<ProductMeasurement> getMeasurements() {

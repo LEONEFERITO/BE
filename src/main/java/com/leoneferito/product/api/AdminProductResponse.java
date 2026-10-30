@@ -70,7 +70,8 @@ public final class AdminProductResponse {
     }
     /** {@code stock} — 남은 수량(V30). null 이면 세지 않음(주문 후 제작). */
     public record Sku(String size, int sortOrder, boolean orderable, Integer stock, List<Measurement> measurements,
-                      /** 수트 조각 (V43). null 이면 보통 사이즈 */ String piece) {
+                      /** 수트 조각 (V43). null 이면 보통 사이즈 */ String piece,
+                      /** 이 사이즈를 누르면 보여 줄 메인 사진 칸 (V45). null 이면 바꾸지 않음 */ String imageKind) {
     }
     public record Measurement(String part, BigDecimal valueCm, BigDecimal toleranceCm) {
     }

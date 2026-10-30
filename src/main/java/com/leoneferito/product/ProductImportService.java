@@ -315,7 +315,7 @@ public class ProductImportService {
             } else {
                 int order = 0;
                 for (String s : seen) {
-                    skus.add(new AdminProductRequests.Sku(s, order++, true, null, List.of(), null));
+                    skus.add(new AdminProductRequests.Sku(s, order++, true, null, List.of(), null, null));
                 }
             }
         }

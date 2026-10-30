@@ -154,6 +154,12 @@ public class ProductQueryService {
                         .map(m -> new ProductResponse.Measurement(
                                 m.getPart().name(), m.getValueCm(), m.getToleranceCm()))
                         .toList(),
-                sku.getPiece() == null ? null : sku.getPiece().name());
+                sku.getPiece() == null ? null : sku.getPiece().name(),
+                // 고른 칸의 사진 — 그 칸이 비었으면 null (화면은 사진을 바꾸지 않는다)
+                sku.getImageKind() == null ? null : sku.getProduct().getImages().stream()
+                        .filter(i -> i.getKind() == sku.getImageKind())
+                        .findFirst()
+                        .map(i -> mediaUrls.urlFor(i.getMedia()))
+                        .orElse(null));
     }
 }

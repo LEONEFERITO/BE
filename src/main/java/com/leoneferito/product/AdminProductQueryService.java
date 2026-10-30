@@ -112,6 +112,7 @@ public class AdminProductQueryService {
                         .map(m -> new AdminProductResponse.Measurement(
                                 m.getPart().name(), m.getValueCm(), m.getToleranceCm()))
                         .toList(),
-                sku.getPiece() == null ? null : sku.getPiece().name());
+                sku.getPiece() == null ? null : sku.getPiece().name(),
+                sku.getImageKind() == null ? null : sku.getImageKind().name());
     }
 }

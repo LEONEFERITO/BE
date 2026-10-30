@@ -147,6 +147,7 @@ public class AdminProductService {
         for (ProductSku s : src.getSkus()) {
             ProductSku sku = new ProductSku(UUID.randomUUID(), s.getPiece(), s.getSize(), s.getSortOrder());
             sku.setOrderable(s.isOrderable());
+            sku.setImageKind(s.getImageKind());
             for (ProductMeasurement m : s.getMeasurements()) {
                 sku.addMeasurement(new ProductMeasurement(UUID.randomUUID(), m.getPart(), m.getValueCm(), m.getToleranceCm()));
             }
@@ -315,6 +316,7 @@ public class AdminProductService {
             // 재고는 보낸 값 그대로 — 비우면(null) 세지 않는다. 저장은 관리자 화면이 연 순간의 수량으로 덮는다:
             // 그 사이 팔린 수량이 있으면 다시 열어 확인하면 된다(주문이 드문 동안은 이게 가장 단순하다).
             sku.setStock(r.stock());
+            sku.setImageKind(r.imageKind());
 
             if (r.measurements() != null) {
                 for (var m : r.measurements()) {
