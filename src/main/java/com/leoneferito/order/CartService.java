@@ -50,9 +50,10 @@ public class CartService {
                 shipping.isReady(), shipping.getFreeThresholdKrw());
     }
 
-    /** 담기. 같은 상품·사이즈가 있으면 수량을 더한다. */
+    /** 담기. 같은 상품·사이즈·컬러가 있으면 수량을 더한다. 컬러가 있는 상품은 목록 안의 컬러를 골라야 한다(V46). */
     @Transactional
-    public void add(UUID memberId, String slug, String size, int quantity) {
+    public void add(UUID memberId, String slug, String size, String color, int quantity) {
+        String c = color == null ? "" : color.trim();
         Product product = products.findPublishedBySlug(slug)
                 .orElseThrow(() -> new CartException("판매 중인 상품이 아닙니다."));
         if (product.getPriceKrw() == null) {
@@ -62,13 +63,16 @@ public class CartService {
         if (product.priceFor(size) == null) {
             throw new CartException("구성과 사이즈를 다시 골라 주세요.");
         }
+        if (!product.acceptsColor(c)) {
+            throw new CartException(c.isEmpty() ? "컬러를 골라 주세요." : c + " 컬러는 지금 주문할 수 없습니다. 다시 골라 주세요.");
+        }
 
-        var existing = carts.findByMemberIdAndProductIdAndSize(memberId, product.getId(), size);
+        var existing = carts.findByMemberIdAndProductIdAndSizeAndColor(memberId, product.getId(), size, c);
         // 이미 담은 수량까지 더해서 본다 — 재고가 2벌인데 1벌씩 세 번 담는 걸 막는다
         orderableSkus(product, size, existing.map(e -> (int) e.getQuantity()).orElse(0) + quantity);
         existing.ifPresentOrElse(
                 e -> e.setQuantity(e.getQuantity() + quantity),
-                () -> carts.save(new CartItem(memberId, product.getId(), size, quantity)));
+                () -> carts.save(new CartItem(memberId, product.getId(), size, c, quantity)));
     }
 
     @Transactional
@@ -127,8 +131,11 @@ public class CartService {
         ProductSku short_ = sizeOk ? skus.stream().filter(s -> !s.canSupply(item.getQuantity())).findFirst().orElse(null) : null;
         boolean stockOk = sizeOk && short_ == null;
         Long price = published ? p.priceFor(item.getSize()) : null;
-        boolean available = stockOk && price != null;
+        // 담은 뒤에 관리자가 컬러를 지웠으면(V46) 그 줄은 주문할 수 없다 — 지우지 않고 이유를 보여 준다
+        boolean colorOk = published && p.acceptsColor(item.getColor());
+        boolean available = stockOk && price != null && colorOk;
         String reason = !published ? "판매가 끝난 상품입니다."
+                : !colorOk ? "이 컬러는 지금 주문할 수 없습니다."
                 : !sizeOk ? "이 사이즈는 지금 주문할 수 없습니다."
                 : !stockOk ? stockMessage(short_)
                 : price == null ? "가격이 정해지지 않은 상품입니다." : null;
@@ -138,6 +145,7 @@ public class CartService {
                 p == null ? "판매 종료 상품" : p.getName(),
                 p == null ? null : p.mainImage().map(i -> mediaUrls.urlFor(i.getMedia())).orElse(null),
                 item.getSize(),
+                item.getColor(),
                 item.getQuantity(),
                 price,
                 available ? price * item.getQuantity() : 0,
@@ -159,7 +167,8 @@ public class CartService {
                            boolean shippingPolicyReady, Long freeShippingThresholdKrw) {
     }
 
-    public record Line(UUID id, String slug, String name, String imageUrl, String size, int quantity,
+    /** color — 고른 컬러 이름(V46). 컬러가 없는 상품은 빈 값 */
+    public record Line(UUID id, String slug, String name, String imageUrl, String size, String color, int quantity,
                        Long unitPriceKrw, long lineAmountKrw, Short leadTimeDays,
                        /** 제작 기간 최소(V40) — 있으면 화면이 "최소~leadTimeDays일" */
                        Short leadTimeMinDays,

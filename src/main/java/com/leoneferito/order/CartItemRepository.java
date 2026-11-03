@@ -10,7 +10,7 @@ public interface CartItemRepository extends JpaRepository<CartItem, UUID> {
 
     List<CartItem> findByMemberIdOrderByCreatedAtAsc(UUID memberId);
 
-    Optional<CartItem> findByMemberIdAndProductIdAndSize(UUID memberId, UUID productId, String size);
+    Optional<CartItem> findByMemberIdAndProductIdAndSizeAndColor(UUID memberId, UUID productId, String size, String color);
 
     /** 다른 사람의 장바구니 줄을 고치지 못하게 — 찾을 때부터 주인을 조건에 넣는다. */
     Optional<CartItem> findByIdAndMemberId(UUID id, UUID memberId);

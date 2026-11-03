@@ -124,7 +124,20 @@ public final class AdminProductRequests {
             /** 제작 기간 최소(V40). 있으면 "최소~leadTimeDays일" — leadTimeDays 가 최대다. 없으면 한 값 */
             @Min(1) @Max(365) Short leadTimeMinDays,
             /** 수트 베스트 금액(V44). 2피스 = 판매가 − 이 값. 비우면 3피스만 판다. 베스트가 있는 수트(레오네)에만 */
-            @Positive Long vestPriceKrw) {
+            @Positive Long vestPriceKrw,
+            /** 컬러 옵션(V46). 관리자가 놓은 순서대로. 안 보내면(null) 저장된 값을 그대로 둔다 — 엑셀 등록 · 예전 화면이 지우지 않게 */
+            @Valid @Size(max = 12) List<Color> colors) {
+
+        /** 같은 이름의 컬러를 두 번 넣으면 손님이 어느 것을 고른 건지 모른다. 앞뒤 공백 · 대소문자는 같은 이름으로 본다 */
+        @AssertTrue(message = "같은 이름의 컬러를 두 번 넣었습니다.")
+        public boolean isColorUnique() {
+            if (colors == null) {
+                return true;
+            }
+            List<String> names = colors.stream().filter(c -> c != null && c.name() != null)
+                    .map(c -> c.name().trim().toLowerCase(java.util.Locale.ROOT)).toList();
+            return names.size() == new java.util.HashSet<>(names).size();
+        }
 
         private boolean hasPiece(Product.Piece piece) {
             return skus != null && skus.stream().anyMatch(k -> k != null && k.piece() == piece);
@@ -235,6 +248,13 @@ public final class AdminProductRequests {
              */
             @NotNull @Size(max = 120) String alt,
             Integer sortOrder) {
+    }
+
+    /** 컬러 하나(V46) — 이름은 손님 화면 · 주문서에 그대로 나간다. 구성 줄 구분 글자(/ ·)는 못 쓴다 */
+    public record Color(
+            @NotBlank @Size(max = 20)
+            @Pattern(regexp = "^[^/·]+$", message = "컬러 이름에는 / 와 · 를 쓸 수 없습니다.") String name,
+            @NotBlank @Pattern(regexp = "^#[0-9A-Fa-f]{6}$", message = "색은 #RRGGBB 로 적어 주세요.") String hex) {
     }
 
     /** {@code stock} — 남은 수량(V30). 비우면 세지 않는다(주문 후 제작). 0 이면 품절. */

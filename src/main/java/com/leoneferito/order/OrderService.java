@@ -206,10 +206,13 @@ public class OrderService {
                     || p.getLeadTimeDays() == null) {
                 throw new CartException("판매가 끝났거나 주문할 수 없는 상품이 있습니다. 장바구니를 확인해 주세요.");
             }
+            if (!p.acceptsColor(line.getColor())) {
+                throw new CartException("주문할 수 없는 컬러가 있습니다. 장바구니를 확인해 주세요.");
+            }
             CartService.orderableSkus(p, line.getSize(), line.getQuantity());
             items.add(new OrderItem(UUID.randomUUID(), p.getId(), p.getSlug(), p.getName(),
                     p.mainImage().map(img -> mediaUrls.urlFor(img.getMedia())).orElse(null),
-                    line.getSize(), unitPrice, line.getQuantity(), p.getLeadTimeDays(), i));
+                    line.getSize(), line.getColor(), unitPrice, line.getQuantity(), p.getLeadTimeDays(), i));
         }
 
         long itemsAmount = items.stream().mapToLong(OrderItem::getLineAmountKrw).sum();
@@ -285,7 +288,8 @@ public class OrderService {
         UUID memberId = order.getMemberId();
         List<UUID> paidLines = carts.findByMemberIdOrderByCreatedAtAsc(memberId).stream()
                 .filter(c -> order.getItems().stream().anyMatch(
-                        i -> i.getProductId().equals(c.getProductId()) && i.getSize().equals(c.getSize())))
+                        i -> i.getProductId().equals(c.getProductId()) && i.getSize().equals(c.getSize())
+                                && i.getColor().equals(c.getColor())))
                 .map(CartItem::getId)
                 .toList();
         if (!paidLines.isEmpty()) {

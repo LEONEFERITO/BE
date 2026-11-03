@@ -334,6 +334,83 @@ class OrderApiTest {
 
     // ── 주문 · 결제 ─────────────────────────────────────────────
 
+    // ── 컬러 옵션 (V46) ─────────────────────────────────────────
+
+    @Nested
+    @DisplayName("컬러 옵션(V46) — 컬러 · 사이즈를 골라 줄마다 수량")
+    class Colors {
+
+        /** 셔츠에 컬러 둘 — 관리자 저장(AdminApiTest)과 같은 줄을 바로 넣는다. 상품을 다시 읽어 고치면 트랜잭션 밖이라 컬렉션을 못 읽는다 */
+        @BeforeEach
+        void colored() {
+            jdbc.update("INSERT INTO product_color (product_id, sort_order, name, hex) "
+                    + "SELECT id, 0, '블랙', '#111111' FROM product WHERE slug = 'ot-shirt' "
+                    + "UNION ALL SELECT id, 1, '네이비', '#1E2A44' FROM product WHERE slug = 'ot-shirt'");
+        }
+
+        private ResultActions add(String color, String size, int qty) throws Exception {
+            return send(buyer, post("/api/cart/items"), color == null
+                    ? "{\"slug\":\"ot-shirt\",\"size\":\"%s\",\"quantity\":%d}".formatted(size, qty)
+                    : "{\"slug\":\"ot-shirt\",\"size\":\"%s\",\"color\":\"%s\",\"quantity\":%d}".formatted(size, color, qty));
+        }
+
+        @Test
+        @DisplayName("컬러가 있는 상품은 컬러를 골라야 담기고, 컬러 · 사이즈가 다르면 줄이 따로, 같으면 수량이 는다")
+        void linesPerColorAndSize() throws Exception {
+            add(null, "100", 1).andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value("컬러를 골라 주세요."));
+            add("레드", "100", 1).andExpect(status().isBadRequest());
+            add("블랙", "100", 2).andExpect(status().isOk());
+            add("네이비", "100", 1).andExpect(status().isOk());
+            add("블랙", "95", 1).andExpect(status().isOk());
+            add("블랙", "100", 1).andExpect(status().isOk());
+
+            mockMvc.perform(get("/api/cart").cookie(buyer))
+                    .andExpect(jsonPath("$.items.length()").value(3))
+                    .andExpect(jsonPath("$.items[0].color").value("블랙"))
+                    .andExpect(jsonPath("$.items[0].size").value("100"))
+                    .andExpect(jsonPath("$.items[0].quantity").value(3))
+                    .andExpect(jsonPath("$.items[1].color").value("네이비"))
+                    .andExpect(jsonPath("$.itemsAmountKrw").value(290_000 * 5));
+            // 컬러가 없는 상품은 지금처럼 컬러 없이 담기고, 컬러를 보내면 거절한다
+            send(buyer, post("/api/cart/items"), "{\"slug\":\"ot-trousers\",\"size\":\"30\",\"color\":\"블랙\",\"quantity\":1}")
+                    .andExpect(status().isBadRequest());
+            mockMvc.perform(get("/api/cart").cookie(buyer)).andExpect(jsonPath("$.items.length()").value(3));
+            addToCart("ot-trousers", "30", 1);
+            mockMvc.perform(get("/api/cart").cookie(buyer)).andExpect(jsonPath("$.items[3].color").value(""));
+        }
+
+        @Test
+        @DisplayName("주문서 · 내 주문에 컬러가 남고, 결제하면 그 컬러의 줄만 장바구니에서 빠진다")
+        void orderKeepsColor() throws Exception {
+            add("블랙", "100", 1).andExpect(status().isOk());
+            String res = add("네이비", "100", 1).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            String black = JsonPath.read(res, "$.items[0].id");
+            Object[] o = createOrder(black);
+            confirm((String) o[0], "pk_color", (long) o[1]).andExpect(status().isOk());
+
+            mockMvc.perform(get("/api/orders/" + o[0]).cookie(buyer))
+                    .andExpect(jsonPath("$.items[0].color").value("블랙"))
+                    .andExpect(jsonPath("$.items[0].size").value("100"));
+            mockMvc.perform(get("/api/cart").cookie(buyer))
+                    .andExpect(jsonPath("$.items.length()").value(1))
+                    .andExpect(jsonPath("$.items[0].color").value("네이비"));
+        }
+
+        @Test
+        @DisplayName("담은 뒤 관리자가 그 컬러를 빼면 줄은 남되 '주문할 수 없음' 이고, 주문서도 만들 수 없다")
+        void removedColor() throws Exception {
+            String res = add("네이비", "100", 1).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            String id = JsonPath.read(res, "$.items[0].id");
+            jdbc.update("DELETE FROM product_color WHERE name = '네이비'");
+
+            mockMvc.perform(get("/api/cart").cookie(buyer))
+                    .andExpect(jsonPath("$.items[0].available").value(false))
+                    .andExpect(jsonPath("$.items[0].unavailableReason").value("이 컬러는 지금 주문할 수 없습니다."))
+                    .andExpect(jsonPath("$.itemsAmountKrw").value(0));
+            send(buyer, post("/api/orders"), orderBody(id)).andExpect(status().isBadRequest());
+        }
+    }
+
     @Nested
     @DisplayName("주문 · 결제")
     class Payment {

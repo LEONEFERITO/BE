@@ -145,7 +145,7 @@ public class OrderNotifier {
                     StringBuilder lines = new StringBuilder();
                     for (ReturnItem i : r.getItems()) {
                         lines.append("- ").append(i.getOrderItem().getProductName()).append(" · ")
-                                .append(i.getOrderItem().getSize()).append(" · ").append(i.getQuantity()).append("벌")
+                                .append(i.getOrderItem().optionLabel()).append(" · ").append(i.getQuantity()).append("벌")
                                 .append(i.getExchangeSize() == null || i.getExchangeSize().isEmpty() ? "" : " → " + i.getExchangeSize())
                                 .append('\n');
                     }
@@ -175,7 +175,7 @@ public class OrderNotifier {
                 .append("결제수단  ").append(o.getPaymentMethod() == null ? "-" : o.getPaymentMethod()).append("\n\n")
                 .append("주문 상품\n");
         for (OrderItem i : o.getItems()) {
-            s.append("- ").append(i.getProductName()).append(" · ").append(i.getSize()).append(" · ")
+            s.append("- ").append(i.getProductName()).append(" · ").append(i.optionLabel()).append(" · ")
                     .append(i.getQuantity()).append("벌 · ").append(won(i.getLineAmountKrw())).append('\n');
         }
         return s.append("\n받는 분  ").append(o.getRecipientName()).append(" · ").append(o.getRecipientPhone())

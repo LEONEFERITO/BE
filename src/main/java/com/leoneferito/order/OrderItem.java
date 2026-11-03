@@ -41,6 +41,10 @@ public class OrderItem {
     @Column(nullable = false)
     private String size;
 
+    /** 주문 당시 컬러 이름(V46). 컬러가 없는 상품은 빈 값 */
+    @Column(nullable = false)
+    private String color;
+
     @Column(name = "unit_price_krw", nullable = false)
     private long unitPriceKrw;
 
@@ -61,13 +65,14 @@ public class OrderItem {
     }
 
     OrderItem(UUID id, UUID productId, String productSlug, String productName, String imageUrl,
-              String size, long unitPriceKrw, short quantity, short leadTimeDays, int sortOrder) {
+              String size, String color, long unitPriceKrw, short quantity, short leadTimeDays, int sortOrder) {
         this.id = id;
         this.productId = productId;
         this.productSlug = productSlug;
         this.productName = productName;
         this.imageUrl = imageUrl;
         this.size = size;
+        this.color = color == null ? "" : color;
         this.unitPriceKrw = unitPriceKrw;
         this.quantity = quantity;
         this.lineAmountKrw = Math.multiplyExact(unitPriceKrw, (long) quantity);
@@ -101,6 +106,15 @@ public class OrderItem {
 
     public String getSize() {
         return size;
+    }
+
+    public String getColor() {
+        return color;
+    }
+
+    /** 사람이 읽는 옵션 한 줄 — "블랙 / L", 컬러가 없으면 "L". 메일 · 송장 엑셀에 쓴다 */
+    public String optionLabel() {
+        return color.isEmpty() ? size : color + " / " + size;
     }
 
     public long getUnitPriceKrw() {

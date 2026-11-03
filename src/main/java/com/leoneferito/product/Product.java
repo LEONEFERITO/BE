@@ -2,7 +2,10 @@ package com.leoneferito.product;
 
 import com.leoneferito.media.MediaAsset;
 import jakarta.persistence.CascadeType;
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
+import jakarta.persistence.Embeddable;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -12,6 +15,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -22,6 +26,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.hibernate.annotations.BatchSize;
 
 /**
  * 판매 상품.
@@ -225,6 +230,22 @@ public class Product {
     @OrderBy("sortOrder ASC")
     private List<ProductSku> skus = new ArrayList<>();
 
+    /**
+     * 컬러 옵션 (V46, 2026-11-03 고객 "컬러별로 컬러명칭 · 여러 컬러 선택"). 관리자가 놓은 순서 그대로.
+     * 비어 있으면 컬러를 고르지 않는 상품이다(지금까지처럼). 재고는 사이즈별 — 컬러끼리 나눠 세지 않는다.
+     * 목록 화면이 여러 상품을 한 번에 그릴 때 한 상품씩 따로 읽지 않게 묶어서 읽는다(BatchSize).
+     */
+    @ElementCollection(fetch = FetchType.LAZY)
+    @CollectionTable(name = "product_color", joinColumns = @JoinColumn(name = "product_id"))
+    @OrderColumn(name = "sort_order")
+    @BatchSize(size = 50)
+    private List<Color> colors = new ArrayList<>();
+
+    /** 컬러 하나 — 이름(손님 화면 · 주문서에 그대로)과 동그라미 색(#RRGGBB). */
+    @Embeddable
+    public record Color(@Column(nullable = false) String name, @Column(nullable = false) String hex) {
+    }
+
     protected Product() {
         // JPA
     }
@@ -320,6 +341,25 @@ public class Product {
     /** 사이즈 목록도 같은 이유로 통째로 교체한다. */
     public void replaceSkus(List<ProductSku> next) {
         next.forEach(this::addSku);
+    }
+
+    /** 컬러 목록도 통째로 교체한다(V46). 값 목록이라 clearChildren 없이 바로 바꾼다. */
+    public void replaceColors(List<Color> next) {
+        colors.clear();
+        colors.addAll(next);
+    }
+
+    public List<Color> getColors() {
+        return List.copyOf(colors);
+    }
+
+    /**
+     * 이 컬러로 담을 수 있는가 — 컬러가 있는 상품이면 목록 안의 이름이어야 하고, 없는 상품이면 빈 값이어야 한다.
+     * 손님 화면을 거치지 않은 요청(옛 화면 · 직접 호출)도 여기서 막는다.
+     */
+    public boolean acceptsColor(String color) {
+        String c = color == null ? "" : color;
+        return colors.isEmpty() ? c.isEmpty() : colors.stream().anyMatch(x -> x.name().equals(c));
     }
 
     /** 초안으로 되돌린다. 공개된 상품을 내릴 때 쓴다. */

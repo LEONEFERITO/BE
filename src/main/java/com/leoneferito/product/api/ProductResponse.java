@@ -75,7 +75,13 @@ public final class ProductResponse {
             /** 제작 기간 최소 (V40). 있으면 화면은 "최소~leadTimeDays일" */
             Short leadTimeMinDays,
             /** 수트 2피스(자켓 + 팬츠) 한 벌 값 — 판매가 − 베스트 금액(V44), 베스트가 없는 수트는 판매가. null 이면 2피스는 팔지 않는다 */
-            Long twoPiecePriceKrw) {
+            Long twoPiecePriceKrw,
+            /** 컬러 옵션(V46). 비어 있으면 컬러를 고르지 않는 상품 */
+            List<Color> colors) {
+    }
+
+    /** 컬러 하나 — 이름과 동그라미 색(#RRGGBB) */
+    public record Color(String name, String hex) {
     }
 
     /**

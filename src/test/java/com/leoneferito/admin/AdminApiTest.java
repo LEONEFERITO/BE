@@ -902,6 +902,49 @@ class AdminApiTest {
         }
 
         @Test
+        @DisplayName("컬러 옵션(V46) — 이름 · 색을 순서대로 저장하고 손님 상세에 나간다. 안 보내면 그대로, 겹친 이름 · 틀린 색은 400")
+        void colors() throws Exception {
+            String id = createProduct("with-colors");
+            String main = uploadImage();
+            String images = "[ { \"mediaId\": \"%s\", \"kind\": \"MAIN\", \"alt\": \"대표\", \"sortOrder\": 0 } ]".formatted(main);
+            String withColors = body("with-colors", images).replace("\"images\":",
+                    "\"colors\": [ {\"name\":\" 블랙 \",\"hex\":\"#111111\"}, {\"name\":\"네이비\",\"hex\":\"#1e2a44\"} ], \"images\":");
+            mockMvc.perform(asAdmin(put("/api/admin/products/" + id)).contentType(MediaType.APPLICATION_JSON).content(withColors))
+                    .andExpect(status().isNoContent());
+            mockMvc.perform(asAdmin(get("/api/admin/products/" + id)))
+                    .andExpect(jsonPath("$.colors.length()").value(2))
+                    .andExpect(jsonPath("$.colors[0].name").value("블랙"))
+                    .andExpect(jsonPath("$.colors[1].hex").value("#1E2A44"));
+
+            // 순서 바꾸기(이름 맞바꿈)도 저장된다
+            mockMvc.perform(asAdmin(put("/api/admin/products/" + id)).contentType(MediaType.APPLICATION_JSON)
+                            .content(body("with-colors", images).replace("\"images\":",
+                                    "\"colors\": [ {\"name\":\"네이비\",\"hex\":\"#1E2A44\"}, {\"name\":\"블랙\",\"hex\":\"#111111\"} ], \"images\":")))
+                    .andExpect(status().isNoContent());
+            // colors 를 안 보내면(엑셀 등록 · 예전 화면) 그대로 둔다
+            mockMvc.perform(asAdmin(put("/api/admin/products/" + id)).contentType(MediaType.APPLICATION_JSON)
+                    .content(body("with-colors", images))).andExpect(status().isNoContent());
+            mockMvc.perform(asAdmin(post("/api/admin/products/" + id + "/publish"))).andExpect(status().isNoContent());
+            mockMvc.perform(get("/api/products/with-colors"))
+                    .andExpect(jsonPath("$.colors[*].name").value(org.hamcrest.Matchers.contains("네이비", "블랙")));
+
+            for (String bad : new String[] {
+                    "[ {\"name\":\"블랙\",\"hex\":\"#111111\"}, {\"name\":\"블랙\",\"hex\":\"#222222\"} ]",
+                    "[ {\"name\":\"블랙\",\"hex\":\"black\"} ]",
+                    "[ {\"name\":\"블랙/화이트\",\"hex\":\"#111111\"} ]",
+                    "[ {\"name\":\"\",\"hex\":\"#111111\"} ]"}) {
+                mockMvc.perform(asAdmin(put("/api/admin/products/" + id)).contentType(MediaType.APPLICATION_JSON)
+                                .content(body("with-colors", images).replace("\"images\":", "\"colors\": " + bad + ", \"images\":")))
+                        .andExpect(status().isBadRequest());
+            }
+            // 비우면(빈 목록) 컬러를 고르지 않는 상품이 된다
+            mockMvc.perform(asAdmin(put("/api/admin/products/" + id)).contentType(MediaType.APPLICATION_JSON)
+                    .content(body("with-colors", images).replace("\"images\":", "\"colors\": [], \"images\":")))
+                    .andExpect(status().isNoContent());
+            mockMvc.perform(get("/api/products/with-colors")).andExpect(jsonPath("$.colors.length()").value(0));
+        }
+
+        @Test
         @DisplayName("메인 사진 다섯 장(V41) — 대표 · 착용 · 디테일 · 추가 1 · 추가 2 가 손님 상세에 나간다")
         void fivePhotos() throws Exception {
             String id = createProduct("five-photos");

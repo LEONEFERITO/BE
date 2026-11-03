@@ -39,7 +39,7 @@ public class CartController {
 
     @PostMapping("/items")
     public CartService.CartView add(@AuthenticationPrincipal MemberPrincipal me, @Valid @RequestBody Add request) {
-        cart.add(me.getId(), request.slug(), request.size(), request.quantity());
+        cart.add(me.getId(), request.slug(), request.size(), request.color(), request.quantity());
         return cart.view(me.getId());
     }
 
@@ -56,8 +56,10 @@ public class CartController {
         return cart.view(me.getId());
     }
 
+    /** color — 컬러가 있는 상품이면 목록 안의 이름(V46), 없는 상품이면 비운다 */
     public record Add(@NotBlank @Size(max = 80) String slug,
                       @NotBlank @Size(max = 80) String size,
+                      @Size(max = 20) String color,
                       @Min(1) @Max(10) int quantity) {
     }
 

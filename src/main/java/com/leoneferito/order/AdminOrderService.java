@@ -133,7 +133,7 @@ public class AdminOrderService {
             int r = 1;
             for (ShopOrder o : list) {
                 String items = o.getItems().stream()
-                        .map(i -> i.getProductName() + " " + i.getSize() + " x" + i.getQuantity())
+                        .map(i -> i.getProductName() + " " + i.optionLabel() + " x" + i.getQuantity())
                         .collect(java.util.stream.Collectors.joining(" / "));
                 int qty = o.getItems().stream().mapToInt(OrderItem::getQuantity).sum();
                 String[] cells = {o.getOrderNumber(), o.getRecipientName(), o.getRecipientPhone(), o.getZipCode(),

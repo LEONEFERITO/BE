@@ -9,7 +9,7 @@ import java.util.UUID;
 
 /**
  * 장바구니 한 줄. 가격을 담지 않는다 — 담아 둔 사이에 가격이 바뀔 수 있어서 볼 때마다 상품에서 읽는다.
- * 같은 상품·사이즈는 한 줄이고(DB UNIQUE), 다시 담으면 수량이 는다.
+ * 같은 상품·사이즈·컬러는 한 줄이고(DB UNIQUE, V46), 다시 담으면 수량이 는다. 컬러가 없는 상품은 컬러가 빈 값이다.
  */
 @Entity
 @Table(name = "cart_item")
@@ -30,6 +30,10 @@ public class CartItem {
     @Column(nullable = false, updatable = false)
     private String size;
 
+    /** 고른 컬러 이름(V46). 컬러가 없는 상품은 빈 값 */
+    @Column(nullable = false, updatable = false)
+    private String color;
+
     @Column(nullable = false)
     private short quantity;
 
@@ -40,11 +44,12 @@ public class CartItem {
         // JPA
     }
 
-    CartItem(UUID memberId, UUID productId, String size, int quantity) {
+    CartItem(UUID memberId, UUID productId, String size, String color, int quantity) {
         this.id = UUID.randomUUID();
         this.memberId = memberId;
         this.productId = productId;
         this.size = size;
+        this.color = color == null ? "" : color;
         setQuantity(quantity);
     }
 
@@ -70,6 +75,10 @@ public class CartItem {
 
     public String getSize() {
         return size;
+    }
+
+    public String getColor() {
+        return color;
     }
 
     public short getQuantity() {

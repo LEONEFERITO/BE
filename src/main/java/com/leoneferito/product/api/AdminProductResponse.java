@@ -60,7 +60,12 @@ public final class AdminProductResponse {
             /** 제작 기간 최소 (V40). leadTimeDays 가 최대 */
             Short leadTimeMinDays,
             /** 수트 베스트 금액 (V44) — 2피스 = 판매가 − 이 값 */
-            Long vestPriceKrw) {
+            Long vestPriceKrw,
+            /** 컬러 옵션 (V46). 관리자가 놓은 순서 */
+            List<Color> colors) {
+    }
+
+    public record Color(String name, String hex) {
     }
 
     public record Internal(String adminName, String fabricSupplier, String fabricCollection, String fabricCode,

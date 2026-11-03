@@ -333,6 +333,8 @@ public class ProductImportService {
                         c.text(Col.WORKSHOP, AdminProductRequests.NOTICE_MAX), c.won(Col.COST), subCategory),
                 leadMin == null ? null : leadMin.shortValue(),
                 // 수트 구성(조각별 사이즈 · 베스트 금액)은 엑셀에 칸이 없다 — 등록 뒤 관리자 상품 화면에서 정한다
+                null,
+                // 컬러 옵션(V46)도 엑셀에 칸이 없다 — null 이면 저장된 값을 그대로 둔다
                 null);
 
         if (errors.size() == before) {

@@ -19,12 +19,14 @@ public final class ReturnResponse {
     }
 
     /** unitPriceKrw: 주문 당시 단가 — 관리자가 환불액을 정할 때 기준으로 본다. */
-    public record Item(UUID orderItemId, String name, String imageUrl, String size, long unitPriceKrw, int quantity,
-                       String exchangeSize) {
+    /** color — 주문 당시 컬러(V46). 교환은 사이즈만 바꾼다 — 컬러는 그대로 */
+    public record Item(UUID orderItemId, String name, String imageUrl, String size, String color, long unitPriceKrw,
+                       int quantity, String exchangeSize) {
 
         static Item of(ReturnItem i) {
             return new Item(i.getOrderItem().getId(), i.getOrderItem().getProductName(),
-                    i.getOrderItem().getImageUrl(), i.getOrderItem().getSize(), i.getOrderItem().getUnitPriceKrw(),
+                    i.getOrderItem().getImageUrl(), i.getOrderItem().getSize(), i.getOrderItem().getColor(),
+                    i.getOrderItem().getUnitPriceKrw(),
                     i.getQuantity(), i.getExchangeSize());
         }
     }
