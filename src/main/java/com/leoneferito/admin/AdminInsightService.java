@@ -88,9 +88,10 @@ public class AdminInsightService {
             days.add(byDate.getOrDefault(d, new Day(d, 0, 0)));
         }
 
+        // 취소된 주문은 빼고 — 할 일이 남지 않은 주문이다(2026-11-05 요청). 기록은 주문 관리의 «취소» · «전체» 에 그대로 있다
         List<RecentOrder> recent = jdbc.query("""
                 SELECT order_number, order_name, status, total_amount_krw, recipient_name, paid_at
-                FROM orders WHERE paid_at IS NOT NULL ORDER BY paid_at DESC LIMIT 5
+                FROM orders WHERE paid_at IS NOT NULL AND status <> 'CANCELLED' ORDER BY paid_at DESC LIMIT 5
                 """, (rs, i) -> new RecentOrder(rs.getString(1), rs.getString(2), rs.getString(3), rs.getLong(4),
                 rs.getString(5), rs.getTimestamp(6).toInstant()));
 

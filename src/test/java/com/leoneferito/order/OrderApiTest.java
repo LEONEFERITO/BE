@@ -622,6 +622,12 @@ class OrderApiTest {
             TossCall cancel = TOSS_CALLS.stream().filter(c -> c.path().endsWith("/cancel")).findFirst().orElseThrow();
             assertThat(cancel.path()).contains("/v1/payments/pk_");
             assertThat(cancel.idempotencyKey()).isEqualTo("cancel-" + orderNumber);
+            // 대시보드 «최근 결제» 에서는 빠지고, 주문 관리 «취소» 에는 남는다
+            Cookie admin = login(mockMvc, ADMIN, PASSWORD);
+            send(admin, get("/api/admin/dashboard"), null).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.recent[?(@.orderNumber == '%s')]".formatted(orderNumber)).isEmpty());
+            send(admin, get("/api/admin/orders?status=CANCELLED"), null).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.items[?(@.orderNumber == '%s')]".formatted(orderNumber)).isNotEmpty());
         }
 
         @Test
