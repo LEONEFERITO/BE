@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -59,7 +60,37 @@ class RetentionCleanupTest {
     @AfterEach
     void tearDown() {
         MemberTestSupport.cleanDatabase(jdbc);
+        jdbc.update("UPDATE site_image SET media_id = NULL WHERE slot = 'OFFLINE_SHOP'");
         jdbc.update("DELETE FROM media_asset WHERE private");
+    }
+
+    /** 공개 사진 한 장(상품 · 배너용) — 파일까지 실제로 만든다. 돌려주는 값은 [id, 저장 키] */
+    private Object[] media(Instant createdAt) throws Exception {
+        String key = storage.store(new ByteArrayInputStream(new byte[] {1, 2, 3}), com.leoneferito.media.ImageFormat.JPEG);
+        UUID id = UUID.randomUUID();
+        jdbc.update("INSERT INTO media_asset (id, original_filename, content_type, byte_size, storage_key, created_at) "
+                + "VALUES (?, 'p.jpg', 'image/jpeg', 3, ?, ?)", id, key, Timestamp.from(createdAt));
+        return new Object[] {id, key};
+    }
+
+    @Test
+    @DisplayName("아무 데서도 쓰지 않는 사진은 일주일 뒤 줄과 파일을 지우고, 쓰는 사진 · 방금 올린 사진은 남긴다")
+    void orphanMedia() throws Exception {
+        Instant now = Instant.now();
+        Object[] orphan = media(now.minus(Duration.ofDays(10)));
+        Object[] used = media(now.minus(Duration.ofDays(10)));
+        Object[] fresh = media(now.minus(Duration.ofDays(2)));
+        assertThat(jdbc.update("UPDATE site_image SET media_id = ? WHERE slot = 'OFFLINE_SHOP'", used[0])).isEqualTo(1);
+
+        RetentionCleanup.Result r = cleanup.run(now);
+
+        assertThat(r.media()).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM media_asset WHERE id = ?", Long.class, orphan[0])).isZero();
+        assertThat(Files.exists(store.resolve((String) orphan[1]))).isFalse();
+        for (Object[] kept : List.of(used, fresh)) {
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM media_asset WHERE id = ?", Long.class, kept[0])).isEqualTo(1);
+            assertThat(Files.exists(store.resolve((String) kept[1]))).isTrue();
+        }
     }
 
     /** 반품 사진 한 장 — 파일까지 실제로 만든다. 돌려주는 값은 저장 키 */
