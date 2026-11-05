@@ -64,7 +64,8 @@ public final class AdminProductRequests {
 
             @Size(max = NAME_MAX) String name,
             @NotNull ProductCategory category,
-            @NotNull ProductLine line,
+            /** 라인. 라인 구분 없이 올리는 상품은 null (V48) */
+            ProductLine line,
             /** 세부 분류. 트라우저 · 신발만, 없으면 null (V21) */
             ProductStyle style,
 

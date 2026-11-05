@@ -58,8 +58,9 @@ public class Product {
     @Column(nullable = false)
     private ProductCategory category;
 
+    /** 라인. 라인 구분이 없는 상품(바지 · 신발 · 액세서리 등)은 {@code null} — V48, 2026-11-05 요청. */
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column
     private ProductLine line;
 
     /** 세부 분류(트라우저 핏 · 신발 종류). 없는 분류는 {@code null}. V21. */
@@ -258,7 +259,7 @@ public class Product {
         this.id = Objects.requireNonNull(id, "id");
         this.slug = Objects.requireNonNull(slug, "slug");
         this.category = Objects.requireNonNull(category, "category");
-        this.line = Objects.requireNonNull(line, "line");
+        this.line = line; // 없으면 라인 구분 없음(V48)
     }
 
     /**
@@ -416,6 +417,11 @@ public class Product {
 
     public ProductLine getLine() {
         return line;
+    }
+
+    /** 라인을 바꾸거나 비운다(라인 구분 없음, V48). 분류와 달리 수정에서 바꿀 수 있다 — 주문 항목은 라인을 복사해 두지 않는다. */
+    public void setLine(ProductLine line) {
+        this.line = line;
     }
 
     public ProductStyle getStyle() {

@@ -241,6 +241,7 @@ public class AdminProductService {
 
     private void apply(Product product, AdminProductRequests.Save request) {
         product.setName(request.name());
+        product.setLine(request.line());
         product.setStyle(request.style());
         product.setSummary(request.summary());
         product.setPriceKrw(request.priceKrw());

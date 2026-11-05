@@ -51,7 +51,7 @@ public class ProductImportService {
      * 열 순서가 곧 양식(template)의 순서 — 고객 최종 양식(2026-10-27, 22칸)과 같은 차례, 그 뒤에 고객 양식에 없는 정가.
      */
     enum Col {
-        NAME("판매용상품명", true, "상품명"), ADMIN_NAME("관리용상품명", false), LINE("라인", true),
+        NAME("판매용상품명", true, "상품명"), ADMIN_NAME("관리용상품명", false), LINE("라인", false),
         CATEGORY("대분류", true, "분류"), SUB_CATEGORY("소분류", false), STYLE("세부분류", false), SIZES("사이즈", false), COLOR("색상", false),
         FABRIC_SUPPLIER("원단공급사", false), FABRIC_COLLECTION("원단컬렉션", false), FABRIC_CODE("원단품번", false),
         WORKSHOP("공임처", false), MANUFACTURER("제조사", false), PRICE("판매가", false), COST("원가", false),
@@ -258,9 +258,7 @@ public class ProductImportService {
         if (c.raw(Col.CATEGORY) == null) {
             errors.add(new RowError(rowNo, c.name(Col.CATEGORY), "분류를 적어 주세요 (수트 · 재킷 · 트라우저 · 셔츠 · 신발 · 액세서리)."));
         }
-        if (c.raw(Col.LINE) == null) {
-            errors.add(new RowError(rowNo, c.name(Col.LINE), "라인을 적어 주세요 (레오네 · 페리토)."));
-        }
+        // 라인은 비워도 된다 — 라인 구분 없이 올리는 상품(바지 · 신발 · 액세서리 등, V48)
         ProductStyle style = c.pick(Col.STYLE, STYLE, ProductStyle.class);
         // 소분류 — 자유 태그(2026-10-27). 기존 세부 핏 이름(스트레이트 · 로퍼 …)이고 대분류와 맞으면 핏으로도 쓴다. 틀려도 오류 아님
         String subCategory = c.text(Col.SUB_CATEGORY, 40);

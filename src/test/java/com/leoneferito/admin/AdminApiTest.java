@@ -502,6 +502,46 @@ class AdminApiTest {
         }
 
         @Test
+        @DisplayName("라인 없이도 등록 · 공개된다(V48) — 분류 목록엔 나오고 라인으로 거르면 빠진다")
+        void noLine() throws Exception {
+            String mediaId = uploadImage();
+            String body = """
+                    {
+                      "slug": "no-line-loafer",
+                      "name": "라인 없는 로퍼",
+                      "category": "SHOES",
+                      "priceKrw": 390000,
+                      "leadTimeDays": 14,
+                      "fabric": "소가죽",
+                      "care": "가죽 전용 크림",
+                      "color": "블랙",
+                      "manufacturer": "레오네페리토",
+                      "countryOfOrigin": "대한민국",
+                      "manufacturedOn": "2026년 11월",
+                      "images": [ { "mediaId": "%s", "kind": "MAIN", "alt": "로퍼" } ]
+                    }
+                    """.formatted(mediaId);
+            MvcResult r = mockMvc.perform(asAdmin(post("/api/admin/products"))
+                            .contentType(MediaType.APPLICATION_JSON).content(body))
+                    .andExpect(status().isCreated()).andReturn();
+            String id = com.jayway.jsonpath.JsonPath.read(r.getResponse().getContentAsString(), "$.id");
+            mockMvc.perform(asAdmin(post("/api/admin/products/" + id + "/publish")))
+                    .andExpect(status().isNoContent());
+
+            mockMvc.perform(asAdmin(get("/api/admin/products/" + id)))
+                    .andExpect(jsonPath("$.line").value(org.hamcrest.Matchers.nullValue()));
+            mockMvc.perform(asAdmin(get("/api/admin/products")))
+                    .andExpect(jsonPath("$[?(@.slug == 'no-line-loafer')].line").value(org.hamcrest.Matchers.contains(org.hamcrest.Matchers.nullValue())));
+            mockMvc.perform(get("/api/products/no-line-loafer"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.line").value(org.hamcrest.Matchers.nullValue()));
+            mockMvc.perform(get("/api/products").param("category", "SHOES"))
+                    .andExpect(jsonPath("$[?(@.slug == 'no-line-loafer')]").isNotEmpty());
+            mockMvc.perform(get("/api/products").param("line", "LEONE"))
+                    .andExpect(jsonPath("$[?(@.slug == 'no-line-loafer')]").isEmpty());
+        }
+
+        @Test
         @DisplayName("비공개로 내리면 손님에게서 사라진다")
         void unpublishHidesIt() throws Exception {
             String id = createProduct("temporary");
