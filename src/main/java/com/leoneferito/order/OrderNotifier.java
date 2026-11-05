@@ -99,7 +99,7 @@ public class OrderNotifier {
                             + "\n주문 후 제작하는 상품입니다. 제작에 약 " + leadTime(o) + "일이 걸리며, 보내면 송장번호를 메일로 알려 드립니다.\n\n"
                             + "주문 상세 " + front + "/mypage/order/?no=" + no);
                     toAdmins("[새 주문] " + no + " · " + won(o.getTotalAmountKrw()) + " · " + o.getRecipientName(),
-                            summary(o) + "\n관리자 화면 " + front + "/admin/orders/detail/?no=" + no);
+                            adminSummary(o) + "\n관리자 화면 " + front + "/admin/orders/detail/?no=" + no);
                 }
                 case SHIPPED -> toCustomer(o, "상품을 보냈습니다", "주문하신 상품을 보냈습니다.\n\n"
                         + "주문번호  " + no + "\n택배사  " + o.getCourier() + "\n송장번호  " + o.getTrackingNumber()
@@ -112,7 +112,7 @@ public class OrderNotifier {
                             + "\n\n카드 결제는 카드사에 따라 3~7영업일 안에 취소가 반영됩니다.");
                     if (n.kind() == Kind.CANCELLED_BY_CUSTOMER) {
                         toAdmins("[주문 취소] " + no + " · 손님이 취소 · " + won(o.getRefundedAmountKrw()),
-                                summary(o) + "\n관리자 화면 " + front + "/admin/orders/detail/?no=" + no);
+                                adminSummary(o) + "\n관리자 화면 " + front + "/admin/orders/detail/?no=" + no);
                     }
                 }
                 case RETURN_APPROVED, RETURN_REJECTED, RETURN_COMPLETED, EXCHANGE_SHIPPED -> {
@@ -183,6 +183,16 @@ public class OrderNotifier {
                 .append(o.getAddress2() == null || o.getAddress2().isBlank() ? "" : " " + o.getAddress2())
                 .append(o.getDeliveryMemo() == null || o.getDeliveryMemo().isBlank() ? "" : "\n배송 메모  " + o.getDeliveryMemo())
                 .append('\n').toString();
+    }
+
+    /**
+     * 관리자 메일용 — 받는 분 연락처 · 주소 · 메모는 넣지 않는다(2026-11-04 보안 점검). 관리자 메일함은 외부(네이버 등)라
+     * 손님 개인정보가 메일함에 쌓인다. 배송 정보는 관리자 화면에서 본다.
+     */
+    private String adminSummary(ShopOrder o) {
+        String full = summary(o);
+        int cut = full.indexOf("\n받는 분  ");
+        return (cut < 0 ? full : full.substring(0, cut + 1)) + "받는 분  " + o.getRecipientName() + "\n";
     }
 
     /** 손님 — 탈퇴했거나 정지된 회원에게는 보내지 않는다(탈퇴하면 이메일이 지워진다). */

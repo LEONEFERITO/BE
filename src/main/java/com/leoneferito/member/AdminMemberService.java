@@ -146,6 +146,10 @@ public class AdminMemberService {
         if (member.getRole() == newRole) {
             return;
         }
+        // 간편가입(비밀번호 없음) 계정은 관리자로 올리지 않는다 — 관리자는 비밀번호로만 들어온다(SocialLoginService)
+        if (newRole.isAdmin() && !member.hasPassword()) {
+            throw new MemberRuleException("간편가입 계정은 관리자로 지정할 수 없습니다. 이메일 · 비밀번호로 가입한 계정을 지정해 주세요.");
+        }
 
         MemberRole before = member.getRole();
         member.changeRole(newRole);

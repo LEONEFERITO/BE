@@ -52,7 +52,7 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
     Optional<Product> findPublishedBySlug(@Param("slug") String slug);
 
     /**
-     * 관리자 목록. 상태와 무관하게 전부 — 초안이 보여야 이어서 고친다.
+     * 관리자 목록. 상태와 무관하게 전부 — 초안이 보여야 이어서 고친다. 지운 상품(V47)만 뺀다.
      *
      * <p>최근에 고친 것이 위로 온다. 관리자는 방금 만지던 걸 찾는다.
      * 이미지의 media 까지 fetch 하는 이유: 목록이 대표 이미지 주소를 만들 때
@@ -62,6 +62,7 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
             SELECT DISTINCT p FROM Product p
             LEFT JOIN FETCH p.images i
             LEFT JOIN FETCH i.media
+            WHERE p.deletedAt IS NULL
             ORDER BY p.updatedAt DESC
             """)
     List<Product> findAllForAdmin();
@@ -98,7 +99,7 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
                 .toList();
     }
 
-    /** 이 상품이 걸린 주문 항목이 하나라도 있는가 — 있으면 지우지 못한다(주문 기록 5년 보관). 결제 전 주문도 센다. */
+    /** 이 상품이 걸린 주문 항목이 하나라도 있는가 — 있으면 행은 남기고 지운 것으로만 둔다(주문 기록 5년 보관, V47). 결제 전 주문도 센다. */
     @Query(value = "SELECT EXISTS (SELECT 1 FROM order_item WHERE product_id = :productId)", nativeQuery = true)
     boolean hasOrderItems(@Param("productId") UUID productId);
 
@@ -109,4 +110,9 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
     @org.springframework.data.jpa.repository.Modifying
     @Query(value = "DELETE FROM cart_item WHERE product_id = :productId", nativeQuery = true)
     int deleteCartItems(@Param("productId") UUID productId);
+
+    /** 이 상품의 메인 배너를 지운다 — 행을 남기는 삭제(V47)라 DB CASCADE 가 돌지 않으므로 직접. */
+    @org.springframework.data.jpa.repository.Modifying
+    @Query(value = "DELETE FROM hero_banner WHERE product_id = :productId", nativeQuery = true)
+    int deleteHeroBanners(@Param("productId") UUID productId);
 }

@@ -196,6 +196,8 @@ management:
     health:
       # 상세 정보는 인증된 요청에만. (Phase 5 에서 인증이 붙기 전까지는 사실상 비공개)
       show-details: when-authorized
+      # 로그인한 손님 누구나가 아니라 관리자만 상세(DB · 디스크)를 본다 (2026-11-04 보안 점검)
+      roles: ADMIN
       probes:
         enabled: true
 

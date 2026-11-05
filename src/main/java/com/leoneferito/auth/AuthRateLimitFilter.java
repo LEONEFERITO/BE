@@ -119,7 +119,7 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
 		if (!HttpMethod.POST.matches(request.getMethod())) {
 			return true;
 		}
-		String path = request.getRequestURI();
+		String path = pathOf(request);
 		return !CREDENTIAL_PATHS.contains(path) && !COSTLY_PATHS.contains(path);
 	}
 
@@ -135,7 +135,7 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
 			return;
 		}
 
-		boolean costly = COSTLY_PATHS.contains(request.getRequestURI());
+		boolean costly = COSTLY_PATHS.contains(pathOf(request));
 		RateLimiter limiter = costly ? costlyLimiter : credentialLimiter;
 
 		// 비용 구간은 요청 자체를 센다. 자격증명 구간은 묻기만 하고, 실패했을 때만 아래에서 센다.
@@ -179,4 +179,13 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
 		objectMapper.writeValue(response.getWriter(), ErrorResponse.of(
 				"TOO_MANY_REQUESTS", "시도가 너무 잦습니다. 잠시 후 다시 시도해 주세요.", null));
 	}
+
+	/**
+	 * 비교할 경로 — 디코딩 · 정규화한 값(2026-11-04 보안 점검). getRequestURI() 는 인코딩된 그대로라
+	 * /api/auth/%6Cogin 처럼 보내면 제한을 건너뛰고, Spring 은 디코딩해서 같은 컨트롤러로 보낸다.
+	 */
+	public static String pathOf(HttpServletRequest request) {
+		return org.springframework.web.util.UrlPathHelper.defaultInstance.getPathWithinApplication(request);
+	}
 }
+

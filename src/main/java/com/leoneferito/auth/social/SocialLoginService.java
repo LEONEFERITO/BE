@@ -1,5 +1,6 @@
 package com.leoneferito.auth.social;
 
+import com.leoneferito.auth.SessionTerminator;
 import com.leoneferito.auth.MemberPrincipal;
 import com.leoneferito.member.Member;
 import com.leoneferito.member.MemberRepository;
@@ -38,17 +39,23 @@ public class SocialLoginService implements OAuth2UserService<OAuth2UserRequest, 
     private static final Logger log = LoggerFactory.getLogger(SocialLoginService.class);
     private final MemberRepository members;
     private final MemberSocialLinkRepository links;
+    private final SessionTerminator sessions;
+    private final org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
     private final OAuth2UserService<OAuth2UserRequest, OAuth2User> delegate;
 
     @Autowired
-    public SocialLoginService(MemberRepository members, MemberSocialLinkRepository links) {
-        this(members, links, new DefaultOAuth2UserService());
+    public SocialLoginService(MemberRepository members, MemberSocialLinkRepository links, SessionTerminator sessions,
+                              org.springframework.security.crypto.password.PasswordEncoder passwordEncoder) {
+        this(members, links, sessions, passwordEncoder, new DefaultOAuth2UserService());
     }
 
-    public SocialLoginService(MemberRepository members, MemberSocialLinkRepository links,
+    public SocialLoginService(MemberRepository members, MemberSocialLinkRepository links, SessionTerminator sessions,
+                              org.springframework.security.crypto.password.PasswordEncoder passwordEncoder,
                               OAuth2UserService<OAuth2UserRequest, OAuth2User> delegate) {
         this.members = members;
         this.links = links;
+        this.sessions = sessions;
+        this.passwordEncoder = passwordEncoder;
         this.delegate = delegate;
     }
 
@@ -69,6 +76,11 @@ public class SocialLoginService implements OAuth2UserService<OAuth2UserRequest, 
                         .flatMap(link -> members.findById(link.getMemberId())))
                 .orElseGet(() -> linkOrSignup(provider, profile));
 
+        // 관리자는 비밀번호로만 들어온다 — 이미 연결된 간편 로그인으로도 관리자 세션을 주지 않는다(2026-11-04 보안 점검).
+        // 간편 로그인으로 들어오면 비밀번호 잠금 · 요청 제한 · 임시 비밀번호 차단 같은 관리자 쪽 방어를 모두 건너뛴다.
+        if (member.getRole().isAdmin()) {
+            throw reject("admin_social", "관리자 계정은 간편 로그인으로 들어올 수 없습니다. 이메일과 비밀번호로 로그인해 주세요.");
+        }
         if (member.isSuspended()) {
             throw reject("suspended", "이용이 정지된 계정입니다.");
         }
@@ -108,6 +120,18 @@ public class SocialLoginService implements OAuth2UserService<OAuth2UserRequest, 
             throw reject("email_in_use", "이 이메일에는 다른 " + provider.registrationId + " 계정이 이미 연결되어 있습니다.");
         }
         links.save(new MemberSocialLink(existing.getId(), provider.memberProvider, profile.userId(), Instant.now()));
+        /*
+         * 이메일 가입은 이메일 확인 없이 된다. 그래서 남이 이 이메일로 먼저 가입해 비밀번호를 정해 두었을 수 있다 —
+         * 제공자가 확인한 이메일의 주인(지금 들어오는 사람)에게 연결하면서, 그 비밀번호를 아무도 모르는 값으로 바꾸고
+         * 로그인 중인 세션은 끊는다(이메일 가입 계정은 비밀번호를 비울 수 없다 — DB member_credential_shape).
+         * 본인이 비밀번호로도 쓰려면 «비밀번호 찾기» 로 새로 정한다. (2026-11-04 오픈 전 보안 점검)
+         */
+        if (existing.hasPassword()) {
+            sessions.terminateAll(existing.getEmail());
+            existing.changePassword(passwordEncoder.encode(UUID.randomUUID().toString()));
+            members.save(existing);
+            log.info("간편 로그인 연결 — 기존 비밀번호를 임의 값으로 바꾸고 세션을 끊음 memberId={}", existing.getId());
+        }
         log.info("간편 로그인 연결 provider={} memberId={}", provider, existing.getId());
         return existing;
     }

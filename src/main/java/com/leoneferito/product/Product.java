@@ -206,6 +206,10 @@ public class Product {
     @Column(nullable = false)
     private ProductStatus status = ProductStatus.DRAFT;
 
+    /** 주문 이력이 있어 행만 남기고 지운 시각(V47). 있으면 관리자 목록 · 손님 화면 어디에도 없다. */
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
+
     @Column(name = "display_order", nullable = false)
     private int displayOrder;
 
@@ -365,6 +369,21 @@ public class Product {
     /** 초안으로 되돌린다. 공개된 상품을 내릴 때 쓴다. */
     public void unpublish() {
         this.status = ProductStatus.DRAFT;
+    }
+
+    /**
+     * 지운다 — 주문 이력이 있는 상품(V47). 행은 주문 항목이 가리키므로 남기고, 손님 화면에서 내린 뒤
+     * 주소(slug)를 비워 같은 주소로 새 상품을 만들 수 있게 한다. 주문 항목은 당시 주소를 따로 갖고 있다.
+     */
+    public void markDeleted(Instant now) {
+        this.status = ProductStatus.DRAFT;
+        this.slug = slug + "--deleted-" + id.toString().substring(0, 8);
+        this.deletedAt = now;
+    }
+
+    /** 지우지 않은 상품인가. 관리자 화면은 이것만 다룬다. */
+    public boolean isLive() {
+        return deletedAt == null;
     }
 
     public void publish() {

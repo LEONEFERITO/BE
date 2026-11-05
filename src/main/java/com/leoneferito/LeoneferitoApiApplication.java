@@ -8,6 +8,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.ConfigurableApplicationContext;
 
 @SpringBootApplication
+// 매일 정리 작업(RetentionCleanup — 미첨부 반품 사진 · 지난 재설정 링크 · 오래된 관리자 접속 기록)
+@org.springframework.scheduling.annotation.EnableScheduling
 public class LeoneferitoApiApplication {
 
 	public static void main(String[] args) {

@@ -28,7 +28,7 @@ public class AdminProductQueryService {
     }
 
     public AdminProductResponse.Edit edit(UUID id) {
-        Product product = products.findById(id)
+        Product product = products.findById(id).filter(Product::isLive)
                 .orElseThrow(() -> new ResourceNotFoundException("상품 없음: id=" + id));
         return toEdit(product);
     }

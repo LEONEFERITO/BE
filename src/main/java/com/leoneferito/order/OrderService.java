@@ -268,8 +268,10 @@ public class OrderService {
 
         PaymentGateway.Payment payment = gateway.approve(paymentKey, orderNumber, order.getTotalAmountKrw());
 
+        // 주문번호도 대조한다(2026-11-04 보안 점검) — 나이스 복귀 서명은 주문번호를 덮지 않아, 같은 금액의 다른 주문으로 바꿔 보낼 수 있다
         if (payment.totalAmount() == null || payment.totalAmount() != order.getTotalAmountKrw()
-                || payment.status() != PaymentGateway.Status.PAID) {
+                || payment.status() != PaymentGateway.Status.PAID
+                || (payment.orderId() != null && !payment.orderId().equals(orderNumber))) {
             // 결제사가 승인했는데 금액·상태가 다르다 — 있어선 안 되는 일. 결제 키를 남기고 사람이 본다.
             log.error("결제 승인 결과 불일치 orderNumber={} paymentKey={} status={} amount={}",
                     orderNumber, paymentKey, payment.status(), payment.totalAmount());

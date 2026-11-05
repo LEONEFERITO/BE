@@ -37,8 +37,14 @@
 		X-Frame-Options SAMEORIGIN
 		# 검색 노출 헤더. 기본 all(2026-10-26 허용) — 오픈 전처럼 막으려면 .env 의 SITE_ROBOTS 를 "noindex, nofollow" 로.
 		X-Robots-Tag "{$SITE_ROBOTS}"
-		# 1년 HTTPS 고정. 정식 도메인으로 오픈한 뒤에 켠다 — 한 번 켜면 http 로는 못 돌아간다.
-		# Strict-Transport-Security "max-age=31536000"
+		# 1년 HTTPS 고정 — 정식 도메인(leoneferito.kr)으로 운영 중이라 켠다(2026-11-04 오픈 전 보안 점검). API 는 Spring 이 이미 보낸다.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		# 쓰지 않는 기기 권한은 끈다 — 이 사이트는 카메라 · 마이크 · 위치를 쓰지 않는다(반품 사진은 파일 고르기)
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(self)"
+		# 콘텐츠 보안 정책 — 결제창(토스 · 나이스페이) · 소셜 로그인을 깨지 않는 항목만:
+		#   다른 사이트가 이 화면을 틀 안에 넣지 못하게(클릭재킹), <base> 로 주소를 바꾸지 못하게, 플러그인(object) 금지.
+		#   스크립트 출처 제한(script-src)은 결제창 출처를 하나하나 확인한 뒤에 따로 켠다 — 오픈 직전에 결제를 막을 위험이 있다.
+		Content-Security-Policy "frame-ancestors 'self'; base-uri 'self'; object-src 'none'"
 	}
 
 	# 이름에 내용 해시가 붙는 파일은 1년 캐시. 나머지(HTML · 사진)는 매번 바뀌었는지 확인한다(ETag).
@@ -57,9 +63,14 @@
 		file_server
 	}
 
+	# 접속 기록 — 방침대로 3개월(2160h) 보관 뒤 지운다(통신비밀보호법). caddy-data 볼륨에 남아 재시작해도 이어진다.
+	# 쿠키 · Authorization 헤더는 Caddy 가 기본으로 가린다. 재설정 링크의 토큰은 주소의 # 뒤라 서버로 오지 않는다.
 	log {
-		output stdout
-		format console
+		output file /data/logs/site.log {
+			roll_size 50MiB
+			roll_keep_for 2160h
+		}
+		format json
 	}
 }
 
@@ -89,12 +100,19 @@
 	header {
 		# 서버 종류를 굳이 알려주지 않는다.
 		-Server
-		# 1년 HTTPS 고정. 정식 도메인으로 오픈한 뒤에 켠다 — 한 번 켜면 http 로는 못 돌아간다.
-		# Strict-Transport-Security "max-age=31536000"
+		# HTTPS 고정(HSTS)은 Spring Security 가 이미 보낸다(max-age=31536000; includeSubDomains) — 여기서 겹쳐 보내지 않는다.
+		# JSON · 이미지만 내보내는 곳이라 문서로 열려도 아무것도 실행되지 않게
+		Content-Security-Policy "default-src 'none'; frame-ancestors 'none'"
+		Referrer-Policy no-referrer
 	}
 
+	# 접속 기록 — 방침대로 3개월(2160h) 보관 뒤 지운다(통신비밀보호법). caddy-data 볼륨에 남아 재시작해도 이어진다.
+	# 쿠키 · Authorization 헤더는 Caddy 가 기본으로 가린다. 재설정 링크의 토큰은 주소의 # 뒤라 서버로 오지 않는다.
 	log {
-		output stdout
-		format console
+		output file /data/logs/api.log {
+			roll_size 50MiB
+			roll_keep_for 2160h
+		}
+		format json
 	}
 }

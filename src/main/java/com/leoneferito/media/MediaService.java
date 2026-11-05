@@ -96,6 +96,11 @@ public class MediaService {
                             : "JPG · PNG · WebP · GIF · AVIF · BMP 이미지만 올릴 수 있습니다.");
         }
 
+        // JPEG 의 촬영 정보(위치 GPS · 기기 · 촬영 시각 — EXIF/XMP)를 지운다(2026-11-04 보안 점검). 손님 반품 사진에 집 위치가 남지 않게
+        if (format == ImageFormat.JPEG) {
+            bytes = stripJpegMetadata(bytes);
+        }
+
         Dimensions size = measure(bytes);
 
         String key = storage.store(new ByteArrayInputStream(bytes), format);
@@ -202,4 +207,37 @@ public class MediaService {
         if (cleaned.isBlank()) return "image";
         return cleaned.length() > 120 ? cleaned.substring(0, 120) : cleaned;
     }
+
+    /**
+     * JPEG 에서 APP1(EXIF · XMP — 위치 · 기기 · 촬영 시각)과 APP13(포토샵 IPTC) 조각만 뺀다. 그림 데이터는 그대로 둔다.
+     * 색 정보(APP2 ICC)는 남긴다 — 빼면 색이 달라 보인다. 구조가 예상과 다르면 원본을 그대로 돌려준다(깨진 사진보다 낫다).
+     */
+    static byte[] stripJpegMetadata(byte[] in) {
+        if (in.length < 4 || (in[0] & 0xFF) != 0xFF || (in[1] & 0xFF) != 0xD8) {
+            return in;
+        }
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream(in.length);
+        out.write(in, 0, 2);
+        int i = 2;
+        while (i + 4 <= in.length) {
+            if ((in[i] & 0xFF) != 0xFF) {
+                return in;
+            }
+            int marker = in[i + 1] & 0xFF;
+            if (marker == 0xDA) { // 그림 데이터 시작 — 나머지는 그대로
+                out.write(in, i, in.length - i);
+                return out.toByteArray();
+            }
+            int len = ((in[i + 2] & 0xFF) << 8) | (in[i + 3] & 0xFF);
+            if (len < 2 || i + 2 + len > in.length) {
+                return in;
+            }
+            if (marker != 0xE1 && marker != 0xED) {
+                out.write(in, i, 2 + len);
+            }
+            i += 2 + len;
+        }
+        return in;
+    }
 }
+

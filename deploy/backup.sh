@@ -13,11 +13,14 @@
 # ─────────────────────────────────────────────────────────────
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# 덤프에는 회원 · 주문 정보가 다 들어 있다 — 만드는 파일은 주인만 읽게
+umask 077
 
 DEST="${BACKUP_DIR:-/opt/leoneferito/backups}"
 KEEP_DAYS="${BACKUP_KEEP_DAYS:-14}"
 STAMP="$(date +%F-%H%M)"
 mkdir -p "$DEST"
+chmod 700 "$DEST"
 
 echo "$(date -Is) ▶ DB"
 # DB 이름 · 사용자는 DB 컨테이너가 이미 갖고 있다(POSTGRES_*). .env 를 셸로 읽지 않는다 —

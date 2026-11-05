@@ -148,10 +148,14 @@ public class AuthService {
             passwordMatches = false;
         }
 
+        /*
+         * 잠긴 동안에는 비밀번호가 맞든 틀리든 같은 답을 한다(2026-11-04 오픈 전 보안 점검).
+         * 맞을 때만 "잠겼다" 고 답하면, 일부러 잠가 놓고 잠긴 15분 동안 횟수 제한 없이 비밀번호를 맞혀 볼 수 있다.
+         * 손님에게는 실패 문구에 "여러 번 틀리면 잠시 잠긴다" 를 함께 적어 둔다(GlobalExceptionHandler).
+         */
         if (member.isLocked(now)) {
             log.info("잠긴 계정 접근 memberId={} passwordMatched={}", member.getId(), passwordMatches);
-            throw new AuthenticationFailedException(
-                    passwordMatches ? Reason.ACCOUNT_LOCKED : Reason.INVALID_CREDENTIALS);
+            throw new AuthenticationFailedException(Reason.INVALID_CREDENTIALS);
         }
 
         if (!passwordMatches) {

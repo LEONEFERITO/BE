@@ -358,6 +358,16 @@ public class ProductImportService {
 
         /** 송장 일괄 입력(주문 쪽)도 같은 읽기를 쓴다 — 그래서 public */
         public static List<List<String>> read(byte[] bytes) {
+            return read(bytes, MAX_ROWS);
+        }
+
+        /**
+         * 데이터 행을 maxRows + 1 개까지 읽는다 — 한 줄 더 읽어야 부르는 쪽이 "상한을 넘었다" 를 알린다.
+         * 압축 폭탄: 풀었을 때 한 항목이 50MB 를 넘거나 압축률이 1% 보다 높으면 POI 가 거절한다(2026-11-04 보안 점검).
+         */
+        public static List<List<String>> read(byte[] bytes, int maxRows) {
+            org.apache.poi.openxml4j.util.ZipSecureFile.setMinInflateRatio(0.01);
+            org.apache.poi.openxml4j.util.ZipSecureFile.setMaxEntrySize(50L * 1024 * 1024);
             try (org.apache.poi.ss.usermodel.Workbook wb =
                          new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(bytes))) {
                 if (wb.getNumberOfSheets() == 0) {
@@ -366,7 +376,7 @@ public class ProductImportService {
                 org.apache.poi.ss.usermodel.Sheet sheet = wb.getSheetAt(0);
                 org.apache.poi.ss.usermodel.DataFormatter fmt = new org.apache.poi.ss.usermodel.DataFormatter(Locale.KOREA);
                 org.apache.poi.ss.usermodel.FormulaEvaluator eval = wb.getCreationHelper().createFormulaEvaluator();
-                int last = Math.min(sheet.getLastRowNum(), MAX_ROWS + 1);
+                int last = Math.min(sheet.getLastRowNum(), maxRows + 1);
                 List<List<String>> rows = new ArrayList<>();
                 for (int r = 0; r <= last; r++) {
                     org.apache.poi.ss.usermodel.Row row = sheet.getRow(r);

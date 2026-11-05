@@ -76,6 +76,8 @@ class NicePayApiTest {
     static final List<Call> CALLS = new CopyOnWriteArrayList<>();
     /** 거래 조회(GET)에 돌려줄 답 — 웹훅 테스트가 "나이스페이가 실제로 알고 있는 결제" 를 심는다. */
     static final Map<String, String> PAYMENTS = new ConcurrentHashMap<>();
+    /** 승인 응답의 orderId — 진짜 나이스페이처럼 결제창에서 인증한 주문번호를 돌려준다(tid → 주문번호) */
+    static final Map<String, String> TID_ORDER = new ConcurrentHashMap<>();
     static final HttpServer NICE;
 
     static String sha256(String s) {
@@ -117,10 +119,10 @@ class NicePayApiTest {
                 long amount = ((Number) JsonPath.read(body, "$.amount")).longValue();
                 String sig = tid.startsWith("badsig") ? "0".repeat(64) : sha256(tid + amount + ediDate + MERCHANT_SIGNING_VALUE);
                 json = """
-                        {"resultCode":"0000","resultMsg":"정상 처리되었습니다.","tid":"%s","orderId":"x","status":"paid",
+                        {"resultCode":"0000","resultMsg":"정상 처리되었습니다.","tid":"%s","orderId":"%s","status":"paid",
                          "paidAt":"%s","amount":%d,"balanceAmt":%d,"payMethod":"card","ediDate":"%s","signature":"%s",
                          "somethingNew":"무시돼야 한다"}
-                        """.formatted(tid, ediDate, amount, amount, ediDate, sig);
+                        """.formatted(tid, TID_ORDER.getOrDefault(tid, "x"), ediDate, amount, amount, ediDate, sig);
             }
             byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
@@ -214,6 +216,7 @@ class NicePayApiTest {
             throws Exception {
         String nonce = "NICEUNTT" + UUID.randomUUID().toString().replace("-", "");
         String sig = signature != null ? signature : sha256(nonce + CLIENT_ID + amount + MERCHANT_SIGNING_VALUE);
+        TID_ORDER.putIfAbsent(tid, orderNumber);
         return mockMvc.perform(post("/api/payments/nicepay/return")
                 // 결제창(나이스페이 도메인)에서 보낸 폼이라 브라우저가 Origin 을 붙인다 — 운영에서 이걸로 403 이 났다(2026-10-15)
                 .header("Origin", "https://pay.nicepay.co.kr")
@@ -311,11 +314,23 @@ class NicePayApiTest {
     }
 
     @Test
-    @DisplayName("결제창에서 그만두면(인증 실패) 그 코드 · 메시지로 실패 화면 — 승인 요청은 없다")
+    @DisplayName("다른 주문에서 받은 결제(같은 금액)로 주문번호만 바꿔 보내면 승인 결과의 주문번호가 달라 결제 완료가 되지 않는다")
+    void swappedOrderNumber() throws Exception {
+        Object[] a = order();
+        Object[] b = order();
+        TID_ORDER.put("tid_swap", (String) a[0]); // 결제창에서는 a 로 인증했다
+        ResultActions r = returned((String) b[0], "tid_swap", (long) b[1]).andExpect(status().isSeeOther());
+        assertThat(location(r)).contains("/order/fail/?code=MISMATCH");
+        assertThat(orderStatus((String) b[0])).isEqualTo("PENDING_PAYMENT");
+    }
+
+    @Test
+    @DisplayName("결제창에서 그만두면(인증 실패) 정해 둔 문구로 실패 화면 — 승인 요청은 없다")
     void authFailed() throws Exception {
         Object[] o = order();
         ResultActions r = returned((String) o[0], "", (long) o[1], "", "9999").andExpect(status().isSeeOther());
-        assertThat(location(r)).startsWith(FRONT + "/order/fail/?code=9999&message=고객 결제 취소&orderNumber=" + o[0]);
+        // 결제창이 준 문구(서명 없음)는 넘기지 않는다 — 정해 둔 문구(2026-11-04 보안 점검)
+        assertThat(location(r)).startsWith(FRONT + "/order/fail/?code=9999&message=결제가 완료되지 않았습니다.&orderNumber=" + o[0]);
         assertThat(CALLS).isEmpty();
     }
 

@@ -165,7 +165,9 @@ class AdminConsoleApiTest {
             for (int i = 0; i < 5; i++) {
                 adminLogin("masteradmin", "nope nope " + i).andExpect(status().isUnauthorized());
             }
-            adminLogin("masteradmin", TEMP).andExpect(jsonPath("$.code").value("ACCOUNT_LOCKED"));
+            // 잠긴 동안은 맞는 비밀번호도 같은 답(2026-11-04 보안 점검) — 문구에 잠금 안내가 들어 있다
+            adminLogin("masteradmin", TEMP).andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"))
+                    .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("잠깁니다")));
         }
     }
 

@@ -2,6 +2,7 @@ package com.leoneferito.member;
 
 import com.leoneferito.auth.LoginAttemptRecorder;
 import com.leoneferito.auth.PasswordPolicy;
+import com.leoneferito.auth.PasswordResetTokenRepository;
 import com.leoneferito.auth.SessionTerminator;
 import com.leoneferito.common.error.ResourceNotFoundException;
 import com.leoneferito.order.OrderStatus;
@@ -37,11 +38,14 @@ public class MemberAccountService {
     private final ShopOrderRepository orders;
     private final ReturnRequestRepository returns;
     private final MemberSocialLinkRepository socialLinks;
+    private final PasswordResetTokenRepository resetTokens;
+    private final com.leoneferito.order.CartItemRepository carts;
 
     public MemberAccountService(MemberRepository members, PasswordEncoder passwordEncoder,
                                 PasswordPolicy passwordPolicy, SessionTerminator sessionTerminator,
                                 LoginAttemptRecorder attempts, ShopOrderRepository orders,
-                                ReturnRequestRepository returns, MemberSocialLinkRepository socialLinks) {
+                                ReturnRequestRepository returns, MemberSocialLinkRepository socialLinks,
+                                PasswordResetTokenRepository resetTokens, com.leoneferito.order.CartItemRepository carts) {
         this.members = members;
         this.passwordEncoder = passwordEncoder;
         this.passwordPolicy = passwordPolicy;
@@ -50,6 +54,8 @@ public class MemberAccountService {
         this.orders = orders;
         this.returns = returns;
         this.socialLinks = socialLinks;
+        this.resetTokens = resetTokens;
+        this.carts = carts;
     }
 
     /**
@@ -93,6 +99,8 @@ public class MemberAccountService {
 
         member.changePassword(passwordEncoder.encode(newPassword));
         sessionTerminator.terminateOthers(member.getEmail(), keepSessionId);
+        // 바꾸기 직전에 나간 재설정 링크가 살아 있으면 그걸로 다시 바꿀 수 있다 — 함께 죽인다
+        resetTokens.invalidateAll(member.getId(), Instant.now());
         log.info("비밀번호 변경 memberId={}", member.getId());
     }
 
@@ -109,7 +117,9 @@ public class MemberAccountService {
         if (member.getRole().isAdmin()) {
             throw new AdminWithdrawalException();
         }
-        if (member.hasPassword()) {
+        // 간편 로그인을 연결한 계정은 연결할 때 비밀번호를 임의 값으로 바꿨다(SocialLoginService) — 본인도 모르므로 묻지 않는다.
+        // 간편가입 계정처럼 화면이 한 번 더 확인한다.
+        if (member.hasPassword() && socialLinks.findByMemberIdOrderByLinkedAtAsc(member.getId()).isEmpty()) {
             verifyPassword(member, password);
         }
         if (orders.existsByMemberIdAndStatusIn(member.getId(),
@@ -123,6 +133,8 @@ public class MemberAccountService {
         member.withdraw(Instant.now());
         // 연결한 간편 로그인도 지운다(V28) — 남겨 두면 그 카카오 · 네이버 계정이 탈퇴 회원에 묶여 다시 가입하지 못한다
         socialLinks.deleteByMemberId(member.getId());
+        // 장바구니도 지운다 — 처리방침의 "탈퇴하면 즉시 지운다" (2026-11-04 점검). 신청에 붙지 않은 반품 사진은 정리 작업이 하루 뒤 지운다
+        carts.deleteByMemberId(member.getId());
         log.info("회원 탈퇴 memberId={}", member.getId());
     }
 

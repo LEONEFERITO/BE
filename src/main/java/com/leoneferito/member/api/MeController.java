@@ -93,8 +93,9 @@ public class MeController {
     public record Profile(String email, String name, String phone, MemberProvider provider,
                           List<MemberProvider> linkedProviders, boolean hasPassword, Instant createdAt) {
         static Profile from(Member m, List<MemberProvider> linked) {
+            // 간편 로그인을 연결하면 비밀번호가 임의 값으로 바뀐다 — 화면이 모르는 비밀번호를 묻지 않게 (탈퇴 규칙과 같다)
             return new Profile(m.getEmail(), m.getName(), m.getPhone(), m.getProvider(), linked,
-                    m.hasPassword(), m.getCreatedAt());
+                    m.hasPassword() && linked.isEmpty(), m.getCreatedAt());
         }
     }
 

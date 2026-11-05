@@ -67,14 +67,14 @@ public class AdminOrderService {
 
     @Transactional
     public void startProduction(UUID actorId, String orderNumber) {
-        find(orderNumber).startProduction(actorId);
+        findForUpdate(orderNumber).startProduction(actorId);
         log.info("제작 시작 orderNumber={} actorId={}", orderNumber, actorId);
     }
 
     /** 발송. 택배사 · 송장번호를 남긴다 — 손님 주문 상세에 그대로 보인다. */
     @Transactional
     public void ship(UUID actorId, String orderNumber, String courier, String trackingNumber) {
-        find(orderNumber).ship(actorId, courier.trim(), trackingNumber.trim(), Instant.now());
+        findForUpdate(orderNumber).ship(actorId, courier.trim(), trackingNumber.trim(), Instant.now());
         // 손님에게 택배사 · 송장번호 메일 (OrderNotifier)
         events.publishEvent(new OrderNotifier.Notice(OrderNotifier.Kind.SHIPPED, orderNumber));
         log.info("발송 orderNumber={} actorId={}", orderNumber, actorId);
@@ -82,7 +82,7 @@ public class AdminOrderService {
 
     @Transactional
     public void markDelivered(UUID actorId, String orderNumber) {
-        find(orderNumber).markDelivered(actorId, Instant.now());
+        findForUpdate(orderNumber).markDelivered(actorId, Instant.now());
         log.info("배송 완료 orderNumber={} actorId={}", orderNumber, actorId);
     }
 
@@ -147,7 +147,7 @@ public class AdminOrderService {
                         cell.setCellValue(qty);
                     } else {
                         cell.setCellStyle(textStyle);
-                        cell.setCellValue(cells[c]);
+                        cell.setCellValue(noFormula(cells[c]));
                     }
                 }
             }
@@ -181,7 +181,7 @@ public class AdminOrderService {
         if (bytes.length > 5 * 1024 * 1024) {
             throw importError(0, null, "파일이 너무 큽니다. 5MB 이하로 나눠 올려 주세요.");
         }
-        List<List<String>> lines = xlsx ? com.leoneferito.product.ProductImportService.XlsxRows.read(bytes)
+        List<List<String>> lines = xlsx ? com.leoneferito.product.ProductImportService.XlsxRows.read(bytes, MAX_TRACKING_ROWS)
                 : com.leoneferito.common.csv.CsvReader.parse(com.leoneferito.common.csv.CsvReader.decode(bytes));
         if (lines.isEmpty()) {
             throw importError(0, null, "파일이 비어 있습니다.");
@@ -259,7 +259,7 @@ public class AdminOrderService {
         }
         Instant now = Instant.now();
         for (Shipped s : plan) {
-            find(s.orderNumber()).ship(actorId, s.courier(), s.trackingNumber(), now);
+            findForUpdate(s.orderNumber()).ship(actorId, s.courier(), s.trackingNumber(), now);
             events.publishEvent(new OrderNotifier.Notice(OrderNotifier.Kind.SHIPPED, s.orderNumber()));
         }
         log.info("송장 일괄 입력 count={} actorId={}", plan.size(), actorId);
@@ -279,4 +279,26 @@ public class AdminOrderService {
         return orders.findByOrderNumber(orderNumber)
                 .orElseThrow(() -> new ResourceNotFoundException("주문 없음 orderNumber=" + orderNumber));
     }
+
+    /**
+     * 상태를 바꿀 때는 행을 잠그고 읽는다(2026-11-04 보안 점검). 손님 취소(OrderService, 잠금 + 결제사 환불)와
+     * 관리자 제작 시작 · 발송이 동시에 오면, 잠그지 않은 쪽이 옛 상태를 들고 있다가 취소 · 환불 기록을 덮어쓴다.
+     */
+    private ShopOrder findForUpdate(String orderNumber) {
+        return orders.findByOrderNumberForUpdate(orderNumber)
+                .orElseThrow(() -> new ResourceNotFoundException("주문 없음 orderNumber=" + orderNumber));
+    }
+
+    /**
+     * 손님이 적은 값(받는 분 · 주소 · 메모)이 = + - @ 로 시작하면 앞에 ' 를 붙인다(2026-11-04 보안 점검).
+     * 엑셀 칸은 글자로 저장되지만, 택배 프로그램 등에서 CSV 로 다시 저장하면 수식으로 실행될 수 있다.
+     */
+    static String noFormula(String v) {
+        if (v == null || v.isEmpty()) {
+            return v;
+        }
+        char c = v.charAt(0);
+        return c == '=' || c == '+' || c == '-' || c == '@' || c == '\t' || c == '\r' ? "'" + v : v;
+    }
 }
+

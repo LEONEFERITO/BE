@@ -135,7 +135,9 @@ public class GlobalExceptionHandler {
 	public ResponseEntity<ErrorResponse> handleAuthFailed(com.leoneferito.auth.AuthenticationFailedException e) {
 		String traceId = currentTraceId();
 		String message = switch (e.getReason()) {
-			case INVALID_CREDENTIALS -> "이메일 또는 비밀번호가 올바르지 않습니다.";
+			// 잠긴 동안에도 이 문구다(AuthService) — 그래서 잠금 안내를 함께 적는다
+			case INVALID_CREDENTIALS -> "이메일 또는 비밀번호가 올바르지 않습니다. 여러 번 틀리면 " + com.leoneferito.member.Member.LOCK_MINUTES
+					+ "분 동안 로그인이 잠깁니다.";
 			case ACCOUNT_LOCKED -> "로그인 시도가 많아 계정이 잠겼습니다. 잠시 후 다시 시도해 주세요.";
 			case ACCOUNT_SUSPENDED -> "이용이 정지된 계정입니다. 고객센터로 문의해 주세요.";
 		};
@@ -366,13 +368,6 @@ public class GlobalExceptionHandler {
 				.toList();
 		return ResponseEntity.badRequest()
 				.body(ErrorResponse.withFields("IMPORT_INVALID", e.getMessage(), currentTraceId(), rows));
-	}
-
-	/** 주문 이력이 있는 상품을 지우려 했다. 409. 관리자가 할 일(비공개로 내리기)을 문구로 알려 준다. */
-	@ExceptionHandler(com.leoneferito.product.AdminProductService.ProductHasOrdersException.class)
-	public ResponseEntity<ErrorResponse> handleProductHasOrders(com.leoneferito.product.AdminProductService.ProductHasOrdersException e) {
-		return ResponseEntity.status(HttpStatus.CONFLICT)
-				.body(ErrorResponse.of("PRODUCT_HAS_ORDERS", e.getMessage(), currentTraceId()));
 	}
 
 	/** 수정 요청의 세부 분류가 저장된 분류와 맞지 않는다 (트라우저 상품에 OXFORD 등). 400. */

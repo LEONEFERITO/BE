@@ -1275,16 +1275,34 @@ class OrderApiTest {
         }
 
         @Test
-        @DisplayName("주문 이력이 있으면(결제 전 주문 포함) 409 — 상품은 그대로 남는다")
-        void refusesWithOrders() throws Exception {
-            createOrder(addToCart("ot-shirt", "100", 1));
+        @DisplayName("주문 이력이 있어도(결제 전 주문 포함) 지워진다 — 행은 남아 주문 내역이 그대로고, 목록 · 손님 화면에서 사라지며 주소는 다시 쓸 수 있다")
+        void deletesWithOrders() throws Exception {
+            String orderNumber = (String) createOrder(addToCart("ot-shirt", "100", 1))[0];
+            addToCart("ot-shirt", "100", 1);
             Cookie admin = login(mockMvc, ADMIN, PASSWORD);
             UUID id = productId("ot-shirt");
 
-            send(admin, delete("/api/admin/products/" + id), null)
-                    .andExpect(status().isConflict())
-                    .andExpect(jsonPath("$.code").value("PRODUCT_HAS_ORDERS"));
-            assertThat(products.findById(id)).isPresent();
+            send(admin, delete("/api/admin/products/" + id), null).andExpect(status().isNoContent());
+
+            // 행은 남는다(주문 항목이 가리킨다) — 지운 것으로 표시되고 주소는 비워진다
+            assertThat(products.findById(id)).hasValueSatisfying(p -> {
+                assertThat(p.isLive()).isFalse();
+                assertThat(p.getStatus()).isEqualTo(com.leoneferito.product.ProductStatus.DRAFT);
+                assertThat(p.getSlug()).startsWith("ot-shirt--deleted-");
+            });
+            assertThat(products.existsBySlug("ot-shirt")).isFalse();
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM cart_item WHERE product_id = ?", Long.class, id)).isZero();
+            // 관리자 목록 · 편집 · 손님 화면에서 사라진다. 두 번 지우면 404
+            String list = send(admin, get("/api/admin/products"), null).andExpect(status().isOk())
+                    .andReturn().getResponse().getContentAsString();
+            assertThat(list).doesNotContain(id.toString());
+            send(admin, get("/api/admin/products/" + id), null).andExpect(status().isNotFound());
+            mockMvc.perform(get("/api/products/ot-shirt")).andExpect(status().isNotFound());
+            send(admin, delete("/api/admin/products/" + id), null).andExpect(status().isNotFound());
+            // 주문 내역은 주문 당시 값으로 그대로
+            mockMvc.perform(get("/api/orders/" + orderNumber).cookie(buyer)).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.items[0].name").isNotEmpty())
+                    .andExpect(jsonPath("$.items[0].slug").value("ot-shirt"));
         }
 
         @Test

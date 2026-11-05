@@ -68,8 +68,8 @@ public class NicePayController {
         if (!"0000".equals(code)) {
             // 인증 실패 · 손님이 결제창에서 그만둠 — 돈은 움직이지 않았다. 주문서와 장바구니는 그대로다.
             log.info("나이스 복귀: 인증 실패 orderNumber={} code={}", orderNumber, code);
-            return fail(code == null ? "AUTH_FAILED" : code,
-                    orElse(form.get("authResultMsg"), "결제가 완료되지 않았습니다."), orderNumber);
+            // 결제창이 준 문구(authResultMsg)는 서명이 없어 넘기지 않는다 — 화면이 코드로 정해 둔 문구를 보인다(2026-11-04 보안 점검)
+            return fail(code == null ? "AUTH_FAILED" : code, "결제가 완료되지 않았습니다.", orderNumber);
         }
         String tid = form.get("tid");
         String amount = form.get("amount");

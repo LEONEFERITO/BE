@@ -56,7 +56,7 @@ public class AdminProductService {
 
     @Transactional
     public void update(UUID id, AdminProductRequests.Save request) {
-        Product product = products.findById(id)
+        Product product = products.findById(id).filter(Product::isLive)
                 .orElseThrow(() -> new ResourceNotFoundException("상품 없음: id=" + id));
 
         /*
@@ -86,7 +86,7 @@ public class AdminProductService {
 
     @Transactional
     public void publish(UUID id) {
-        Product product = products.findById(id)
+        Product product = products.findById(id).filter(Product::isLive)
                 .orElseThrow(() -> new ResourceNotFoundException("상품 없음: id=" + id));
         // 무엇이 비었는지는 엔티티가 판단한다. 규칙이 두 곳에 있으면 한쪽만 바뀐다.
         product.publish();
@@ -96,7 +96,7 @@ public class AdminProductService {
 
     @Transactional
     public void unpublish(UUID id) {
-        Product product = products.findById(id)
+        Product product = products.findById(id).filter(Product::isLive)
                 .orElseThrow(() -> new ResourceNotFoundException("상품 없음: id=" + id));
         product.unpublish();
         events.publishEvent(new FrontRebuildTrigger.CatalogChanged("상품 비공개"));
@@ -112,7 +112,7 @@ public class AdminProductService {
      */
     @Transactional
     public UUID duplicate(UUID id) {
-        Product src = products.findById(id)
+        Product src = products.findById(id).filter(Product::isLive)
                 .orElseThrow(() -> new ResourceNotFoundException("상품 없음: id=" + id));
         String base = src.getSlug() + "-copy";
         String slug = base;
@@ -160,25 +160,36 @@ public class AdminProductService {
     }
 
     /**
-     * 삭제 (2026-10-15 "관리자 상품 관리에서 삭제").
+     * 삭제 (2026-10-15 "관리자 상품 관리에서 삭제", 2026-11-05 주문 이력이 있어도 지울 수 있게).
      *
-     * <p><b>주문 이력이 있으면 지우지 않는다</b> — 결제 전 주문까지 포함. 주문 행은 5년 보관이고 주문 항목이 상품을 가리킨다.
-     * 그런 상품은 비공개로 내리면 손님 화면에서 사라진다. 이력이 없으면(잘못 만든 초안, 시험 등록) 지운다:
+     * <p>주문 이력이 없으면(잘못 만든 초안, 시험 등록) 행까지 지운다:
      * 장바구니에 담긴 줄 → 상품(사진 연결 · 사이즈 · 실측 · 이 상품의 메인 배너는 DB CASCADE) 순서.
-     * 올려 둔 사진 파일(media_asset)은 남긴다 — 다른 상품 · 배너가 같은 사진을 쓸 수 있다.
+     *
+     * <p><b>주문 이력이 있으면</b>(결제 전 주문 포함) 행은 남기고 지운 것으로만 둔다(V47) — 주문 항목이 상품을 가리키고
+     * 주문은 5년 보관이다. 진행 중인 주문의 취소 · 교환 때 사이즈 재고를 되돌리고, 판매 통계도 상품별로 묶인다.
+     * 장바구니 줄과 메인 배너는 지우고, 관리자 목록 · 손님 화면에서 사라지며, 주소(slug)는 새 상품에 다시 쓸 수 있다.
+     * 주문 내역은 주문 당시 복사해 둔 이름 · 사이즈 · 가격 · 사진으로 그대로 보인다.
+     *
+     * <p>어느 쪽이든 올려 둔 사진 파일(media_asset)은 남긴다 — 다른 상품 · 배너가 같은 사진을 쓸 수 있다.
      */
     @Transactional
     public void delete(UUID id) {
-        Product product = products.findById(id)
+        Product product = products.findById(id).filter(Product::isLive)
                 .orElseThrow(() -> new ResourceNotFoundException("상품 없음: id=" + id));
-        if (products.hasOrderItems(id)) {
-            throw new ProductHasOrdersException();
-        }
         boolean wasPublished = product.getStatus() == ProductStatus.PUBLISHED;
+        String slug = product.getSlug();
         int carts = products.deleteCartItems(id);
-        products.delete(product);
-        products.flush();
-        log.info("상품 삭제 productId={} slug={} cartItems={}", id, product.getSlug(), carts);
+        if (products.hasOrderItems(id)) {
+            int banners = products.deleteHeroBanners(id);
+            product.markDeleted(java.time.Instant.now());
+            products.flush();
+            log.info("상품 삭제(주문 이력 있음 — 행은 남김) productId={} slug={} cartItems={} banners={}",
+                    id, slug, carts, banners);
+        } else {
+            products.delete(product);
+            products.flush();
+            log.info("상품 삭제 productId={} slug={} cartItems={}", id, slug, carts);
+        }
         if (wasPublished) {
             events.publishEvent(new FrontRebuildTrigger.CatalogChanged("공개 상품 삭제"));
         }
@@ -345,13 +356,6 @@ public class AdminProductService {
     public static class SlugChangeNotAllowedException extends RuntimeException {
         public SlugChangeNotAllowedException(String slug) {
             super("slug 변경 불가: " + slug);
-        }
-    }
-
-    /** 주문 이력이 있는 상품은 지울 수 없다. 409. */
-    public static class ProductHasOrdersException extends RuntimeException {
-        public ProductHasOrdersException() {
-            super("주문 이력이 있는 상품은 삭제할 수 없습니다. 비공개로 내려 두세요.");
         }
     }
 

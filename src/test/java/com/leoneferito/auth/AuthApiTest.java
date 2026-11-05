@@ -88,6 +88,12 @@ class AuthApiTest {
     @Autowired
     private com.leoneferito.member.MemberAccountService accounts;
 
+    @Autowired
+    private com.leoneferito.auth.SessionTerminator sessionTerminator;
+
+    @Autowired
+    private org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
+
     @BeforeEach
     void reset() {
         // 회원을 참조하는 기록(V10)부터 지운다. 다른 테스트 클래스가 남긴 행이 있을 수 있다.
@@ -126,7 +132,7 @@ class AuthApiTest {
 
         /** 제공자 호출을 흉내 낸다. 진짜 카카오는 키가 있어야 해서 여기서는 응답 모양만 재현한다. */
         private SocialLoginService serviceReturning(Map<String, Object> attributes) {
-            return new SocialLoginService(members, socialLinks, request -> new DefaultOAuth2User(
+            return new SocialLoginService(members, socialLinks, sessionTerminator, passwordEncoder, request -> new DefaultOAuth2User(
                     List.of(new SimpleGrantedAuthority("OAUTH2_USER")), attributes,
                     attributes.containsKey("id") ? "id" : "response"));
         }
@@ -225,7 +231,7 @@ class AuthApiTest {
         }
 
         @Test
-        @DisplayName("확인된 이메일이면 기존 회원에 연결해 로그인한다 — 가입 방법은 그대로, 비밀번호 로그인도 그대로")
+        @DisplayName("확인된 이메일이면 기존 회원에 연결해 로그인한다 — 가입 방법은 그대로, 남이 먼저 정해 둔 비밀번호일 수 있어 그 비밀번호는 더 쓰지 못한다")
         void linksVerifiedEmail() throws Exception {
             Member hong = members.findByEmail(EMAIL).orElseThrow();
             SocialLoginService service = serviceReturning(kakaoVerified(EMAIL));
@@ -238,10 +244,24 @@ class AuthApiTest {
             assertThat(members.count()).isEqualTo(1);
             assertThat(socialLinks.count()).isEqualTo(1);
             assertThat(members.findById(hong.getId()).orElseThrow().getProvider()).isEqualTo(MemberProvider.LOCAL);
+            // 이메일 확인 없이 가입되므로 그 비밀번호는 남이 정한 것일 수 있다 — 연결하면서 아무도 모르는 값으로 바꾼다(2026-11-04 보안 점검)
             mockMvc.perform(withCsrf(post("/api/auth/login"))
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(loginBody(EMAIL, PASSWORD)))
-                    .andExpect(status().isOk());
+                    .andExpect(status().isUnauthorized());
+        }
+
+        @Test
+        @DisplayName("이미 연결된 간편 로그인이어도 관리자가 되면 간편 로그인으로 들어오지 못한다 — 관리자는 비밀번호로만")
+        void adminCannotUseLinkedSocial() {
+            SocialLoginService service = serviceReturning(kakaoVerified("kakao-only@example.com"));
+            var user = (SocialLoginService.SocialUser) service.loadUser(kakaoRequest());
+            jdbc.update("UPDATE member SET role = 'ADMIN' WHERE id = ?", user.principal().getId());
+
+            assertThatThrownBy(() -> service.loadUser(kakaoRequest()))
+                    .isInstanceOf(OAuth2AuthenticationException.class)
+                    .extracting(e -> ((OAuth2AuthenticationException) e).getError().getErrorCode())
+                    .isEqualTo("admin_social");
         }
 
         @Test
@@ -277,7 +297,8 @@ class AuthApiTest {
         void withdrawClearsLink() {
             Member hong = members.findByEmail(EMAIL).orElseThrow();
             serviceReturning(kakaoVerified(EMAIL)).loadUser(kakaoRequest());
-            accounts.withdraw(hong.getId(), PASSWORD);
+            // 연결할 때 비밀번호가 임의 값으로 바뀌었으므로 묻지 않는다
+            accounts.withdraw(hong.getId(), null);
             assertThat(socialLinks.count()).isZero();
 
             var again = (SocialLoginService.SocialUser) serviceReturning(kakaoVerified(EMAIL)).loadUser(kakaoRequest());
@@ -523,7 +544,7 @@ class AuthApiTest {
         }
 
         @Test
-        @DisplayName("5번 틀리면 잠기고, 맞는 비밀번호에만 잠김을 알려준다")
+        @DisplayName("5번 틀리면 잠기고, 잠긴 동안은 비밀번호가 맞든 틀리든 같은 답이다 — 답이 다르면 잠긴 동안 비밀번호를 맞혀 볼 수 있다")
         void lockoutAfterRepeatedFailures() throws Exception {
             for (int i = 0; i < Member.MAX_FAILED_ATTEMPTS; i++) {
                 mockMvc.perform(withCsrf(post("/api/auth/login"))
@@ -534,12 +555,13 @@ class AuthApiTest {
 
             assertThat(members.findByEmail(EMAIL).orElseThrow().isLocked(Instant.now())).isTrue();
 
-            // 맞는 비밀번호 → 왜 못 들어가는지 알려준다 (이 사람은 이미 계정 주인이다)
+            // 맞는 비밀번호도 잠긴 동안은 같은 답 — 문구에 "여러 번 틀리면 잠긴다" 가 들어 있다
             mockMvc.perform(withCsrf(post("/api/auth/login"))
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(loginBody(EMAIL, PASSWORD)))
                     .andExpect(status().isUnauthorized())
-                    .andExpect(jsonPath("$.code").value("ACCOUNT_LOCKED"));
+                    .andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"))
+                    .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("잠깁니다")));
 
             /*
              * 틀린 비밀번호 → 잠김을 알려주지 않는다.

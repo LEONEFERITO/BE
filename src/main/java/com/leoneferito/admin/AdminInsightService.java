@@ -95,7 +95,7 @@ public class AdminInsightService {
                 rs.getString(5), rs.getTimestamp(6).toInstant()));
 
         int[] products = new int[2];
-        jdbc.query("SELECT status, count(*) FROM product GROUP BY status", rs -> {
+        jdbc.query("SELECT status, count(*) FROM product WHERE deleted_at IS NULL GROUP BY status", rs -> {
             if ("PUBLISHED".equals(rs.getString(1))) {
                 products[0] = rs.getInt(2);
             } else if ("DRAFT".equals(rs.getString(1))) {

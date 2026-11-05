@@ -26,7 +26,8 @@ public class AdminAccessLogFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        String path = request.getRequestURI();
+        // 디코딩 · 정규화한 경로로 본다 — /api/%61dmin/… 으로 기록을 건너뛰지 못하게(2026-11-04 보안 점검)
+        String path = com.leoneferito.auth.AuthRateLimitFilter.pathOf(request);
         return !path.startsWith("/api/admin/") || "OPTIONS".equals(request.getMethod());
     }
 

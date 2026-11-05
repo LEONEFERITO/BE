@@ -16,4 +16,7 @@ public interface CartItemRepository extends JpaRepository<CartItem, UUID> {
     Optional<CartItem> findByIdAndMemberId(UUID id, UUID memberId);
 
     void deleteByMemberIdAndIdIn(UUID memberId, Collection<UUID> ids);
+
+    /** 탈퇴 — 그 회원의 장바구니를 모두 지운다 */
+    void deleteByMemberId(UUID memberId);
 }
