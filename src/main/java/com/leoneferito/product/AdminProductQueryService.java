@@ -98,7 +98,8 @@ public class AdminProductQueryService {
                         p.getFabricCode(), p.getWorkshop(), p.getCostKrw(), p.getSubCategory()),
                 p.getLeadTimeMinDays(),
                 p.getVestPriceKrw(),
-                p.getColors().stream().map(c -> new AdminProductResponse.Color(c.name(), c.hex())).toList());
+                p.getColors().stream().map(c -> new AdminProductResponse.Color(c.name(), c.hex())).toList(),
+                p.isHeelOption());
     }
 
     private AdminProductResponse.Sku toSku(ProductSku sku) {

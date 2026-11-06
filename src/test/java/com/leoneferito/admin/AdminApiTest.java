@@ -985,6 +985,42 @@ class AdminApiTest {
         }
 
         @Test
+        @DisplayName("굽높이 옵션(V49) — 켜면 손님 상세에 굽 목록(기본 · +1 ~ +6cm)이 나가고, 안 보내면 그대로, 복제도 따라간다")
+        void heelOption() throws Exception {
+            String id = createProduct("with-heel");
+            String main = uploadImage();
+            String images = "[ { \"mediaId\": \"%s\", \"kind\": \"MAIN\", \"alt\": \"대표\", \"sortOrder\": 0 } ]".formatted(main);
+            mockMvc.perform(asAdmin(put("/api/admin/products/" + id)).contentType(MediaType.APPLICATION_JSON)
+                            .content(body("with-heel", images).replace("\"images\":", "\"heelOption\": true, \"images\":")))
+                    .andExpect(status().isNoContent());
+            mockMvc.perform(asAdmin(get("/api/admin/products/" + id))).andExpect(jsonPath("$.heelOption").value(true));
+            // heelOption 을 안 보내면(엑셀 등록 · 예전 화면) 그대로 둔다
+            mockMvc.perform(asAdmin(put("/api/admin/products/" + id)).contentType(MediaType.APPLICATION_JSON)
+                    .content(body("with-heel", images))).andExpect(status().isNoContent());
+            mockMvc.perform(asAdmin(post("/api/admin/products/" + id + "/publish"))).andExpect(status().isNoContent());
+            mockMvc.perform(get("/api/products/with-heel"))
+                    .andExpect(jsonPath("$.heels").value(org.hamcrest.Matchers.contains("기본", "+1cm", "+2cm", "+3cm", "+4cm", "+5cm", "+6cm")));
+
+            String copy = com.jayway.jsonpath.JsonPath.read(mockMvc.perform(asAdmin(post("/api/admin/products/" + id + "/duplicate")))
+                    .andReturn().getResponse().getContentAsString(), "$.id");
+            mockMvc.perform(asAdmin(get("/api/admin/products/" + copy))).andExpect(jsonPath("$.heelOption").value(true));
+
+            // 끄면 손님 상세의 굽 목록이 빈다
+            mockMvc.perform(asAdmin(put("/api/admin/products/" + id)).contentType(MediaType.APPLICATION_JSON)
+                            .content(body("with-heel", images).replace("\"images\":", "\"heelOption\": false, \"images\":")))
+                    .andExpect(status().isNoContent());
+            mockMvc.perform(get("/api/products/with-heel")).andExpect(jsonPath("$.heels.length()").value(0));
+
+            // 수트 구성(조각별 사이즈)과는 함께 켤 수 없다
+            mockMvc.perform(asAdmin(put("/api/admin/products/" + id)).contentType(MediaType.APPLICATION_JSON)
+                            .content(body("with-heel", images)
+                                    .replace("\"images\":", "\"heelOption\": true, \"images\":")
+                                    .replace("\"skus\": [ { \"size\": \"95\" } ]",
+                                            "\"skus\": [ { \"size\": \"M\", \"piece\": \"JACKET\" }, { \"size\": \"M\", \"piece\": \"PANTS\" } ]")))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test
         @DisplayName("메인 사진 다섯 장(V41) — 대표 · 착용 · 디테일 · 추가 1 · 추가 2 가 손님 상세에 나간다")
         void fivePhotos() throws Exception {
             String id = createProduct("five-photos");

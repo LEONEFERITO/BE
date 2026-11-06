@@ -62,7 +62,9 @@ public final class AdminProductResponse {
             /** 수트 베스트 금액 (V44) — 2피스 = 판매가 − 이 값 */
             Long vestPriceKrw,
             /** 컬러 옵션 (V46). 관리자가 놓은 순서 */
-            List<Color> colors) {
+            List<Color> colors,
+            /** 굽높이 옵션 (V49) */
+            boolean heelOption) {
     }
 
     public record Color(String name, String hex) {

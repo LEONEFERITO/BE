@@ -127,7 +127,15 @@ public final class AdminProductRequests {
             /** 수트 베스트 금액(V44). 2피스 = 판매가 − 이 값. 비우면 3피스만 판다. 베스트가 있는 수트(레오네)에만 */
             @Positive Long vestPriceKrw,
             /** 컬러 옵션(V46). 관리자가 놓은 순서대로. 안 보내면(null) 저장된 값을 그대로 둔다 — 엑셀 등록 · 예전 화면이 지우지 않게 */
-            @Valid @Size(max = 12) List<Color> colors) {
+            @Valid @Size(max = 12) List<Color> colors,
+            /** 굽높이 옵션(V49). 안 보내면(null) 저장된 값을 그대로 둔다 — 엑셀 등록 · 예전 화면이 끄지 않게 */
+            Boolean heelOption) {
+
+        /** 굽높이는 보통 사이즈에만 붙는다 — 수트 구성(조각별 사이즈)과 함께 켜면 손님 화면이 줄을 만들 수 없다 */
+        @AssertTrue(message = "굽높이 옵션은 수트 구성(조각별 사이즈) 상품에는 켤 수 없습니다.")
+        public boolean isHeelOptionValid() {
+            return !Boolean.TRUE.equals(heelOption) || skus == null || skus.stream().noneMatch(k -> k != null && k.piece() != null);
+        }
 
         /** 같은 이름의 컬러를 두 번 넣으면 손님이 어느 것을 고른 건지 모른다. 앞뒤 공백 · 대소문자는 같은 이름으로 본다 */
         @AssertTrue(message = "같은 이름의 컬러를 두 번 넣었습니다.")

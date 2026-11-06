@@ -83,6 +83,13 @@ public class Product {
     @Column(name = "vest_price_krw")
     private Long vestPriceKrw;
 
+    /**
+     * 굽높이 옵션 (V49, 2026-11-06 고객 "270 사이즈에 굽높이 3cm 추가"). 켜면 손님이 사이즈와 함께 굽높이를 고르고,
+     * 장바구니 · 주문의 사이즈 줄이 "270 · 굽 +3cm" 가 된다({@link HeelChoice}). 추가 금액은 없다. 수트 구성과는 함께 쓰지 않는다.
+     */
+    @Column(name = "heel_option", nullable = false)
+    private boolean heelOption;
+
     /** 목록 카드용 한 줄. 상세 본문(description)과 쓰임이 다르다 — V6 주석 참고. */
     @Column
     private String summary;
@@ -460,6 +467,14 @@ public class Product {
         this.vestPriceKrw = vestPriceKrw;
     }
 
+    public boolean isHeelOption() {
+        return heelOption;
+    }
+
+    public void setHeelOption(boolean heelOption) {
+        this.heelOption = heelOption;
+    }
+
     public String getSummary() {
         return summary;
     }
@@ -757,6 +772,34 @@ public class Product {
         }
     }
 
+    /**
+     * 고른 사이즈 + 굽높이 (V49). 장바구니 · 주문의 size 칸에는 {@link #label()} 이 들어간다 — "270 · 굽 기본", "270 · 굽 +3cm".
+     * {@link #parse} 는 그 줄을 다시 읽는다. 다시 만든 줄이 글자 하나까지 같고, 굽이 {@link #HEELS} 안에 있어야 받는다.
+     */
+    public record HeelChoice(String size, String heel) {
+
+        /** 고를 수 있는 굽높이 — 기본, 1 ~ 6cm 추가 (2026-11-06 고객). 손님 화면도 이 목록을 받아 그대로 보여 준다 */
+        public static final List<String> HEELS = List.of("기본", "+1cm", "+2cm", "+3cm", "+4cm", "+5cm", "+6cm");
+
+        private static final String MARK = " · 굽 ";
+
+        public String label() {
+            return size + MARK + heel;
+        }
+
+        public static Optional<HeelChoice> parse(String text) {
+            if (text == null) {
+                return Optional.empty();
+            }
+            int at = text.lastIndexOf(MARK);
+            if (at <= 0) {
+                return Optional.empty();
+            }
+            HeelChoice choice = new HeelChoice(text.substring(0, at), text.substring(at + MARK.length()));
+            return HEELS.contains(choice.heel()) && choice.label().equals(text) ? Optional.of(choice) : Optional.empty();
+        }
+    }
+
     /** 조각이 붙은 사이즈가 하나라도 있으면 수트 구성 상품이다(관리자 저장이 섞지 못하게 막는다 — 전부 붙거나 전부 없거나). */
     public boolean isSuitSet() {
         return skus.stream().anyMatch(s -> s.getPiece() != null);
@@ -793,6 +836,10 @@ public class Product {
      * 모르는 줄이거나 팔지 않는 구성이면 {@code null} — 담기 · 주문이 거절한다. 화면이 보낸 값은 믿지 않고 여기서 다시 정한다.
      */
     public Long priceFor(String size) {
+        // 굽높이 옵션(V49) — 굽까지 고른 줄이어야 한다. 굽은 추가 금액이 없다
+        if (heelOption) {
+            return HeelChoice.parse(size).isPresent() ? priceKrw : null;
+        }
         if (!isSuitSet()) {
             return priceKrw;
         }
@@ -807,8 +854,12 @@ public class Product {
      * 하나라도 없으면(지워진 사이즈 · 모르는 줄 · 팔지 않는 구성) 빈 목록.
      */
     public List<ProductSku> skusFor(String size) {
+        // 굽높이 옵션(V49) — "270 · 굽 +3cm" 의 재고 · 제작 가능 여부는 270 사이즈 칸이 정한다. 굽이 없는 줄은 모르는 줄
+        if (heelOption) {
+            return HeelChoice.parse(size).map(h -> plainSkus(h.size())).orElse(List.of());
+        }
         if (!isSuitSet()) {
-            return skus.stream().filter(s -> s.getPiece() == null && s.getSize().equals(size)).limit(1).toList();
+            return plainSkus(size);
         }
         Optional<SuitChoice> choice = SuitChoice.parse(size).filter(c -> offers(c.set()));
         if (choice.isEmpty()) {
@@ -826,6 +877,10 @@ public class Product {
             found.add(sku.get());
         }
         return found;
+    }
+
+    private List<ProductSku> plainSkus(String size) {
+        return skus.stream().filter(s -> s.getPiece() == null && s.getSize().equals(size)).limit(1).toList();
     }
 
     /*

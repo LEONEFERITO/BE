@@ -411,6 +411,68 @@ class OrderApiTest {
         }
     }
 
+    // ── 굽높이 옵션 (V49) ───────────────────────────────────────
+
+    @Nested
+    @DisplayName("굽높이 옵션(V49) — 사이즈 줄에 굽을 붙여 담는다(\"30 · 굽 +3cm\"), 추가 금액 없음")
+    class Heels {
+
+        @BeforeEach
+        void heeled() {
+            jdbc.update("UPDATE product SET heel_option = TRUE WHERE slug = 'ot-trousers'");
+        }
+
+        private ResultActions add(String size, int qty) throws Exception {
+            return send(buyer, post("/api/cart/items"), "{\"slug\":\"ot-trousers\",\"size\":\"%s\",\"quantity\":%d}".formatted(size, qty));
+        }
+
+        @Test
+        @DisplayName("굽을 골라야 담기고, 굽이 다르면 줄이 따로, 같으면 수량이 는다. 값은 판매가 그대로")
+        void linesPerHeel() throws Exception {
+            mockMvc.perform(get("/api/products/ot-trousers")).andExpect(jsonPath("$.heels.length()").value(7));
+            add("30", 1).andExpect(status().isBadRequest());
+            add("30 · 굽 +7cm", 1).andExpect(status().isBadRequest());
+            add("31 · 굽 +3cm", 1).andExpect(status().isBadRequest());
+            add("30 · 굽 +3cm", 1).andExpect(status().isOk());
+            add("30 · 굽 기본", 1).andExpect(status().isOk());
+            add("30 · 굽 +3cm", 1).andExpect(status().isOk());
+
+            mockMvc.perform(get("/api/cart").cookie(buyer))
+                    .andExpect(jsonPath("$.items.length()").value(2))
+                    .andExpect(jsonPath("$.items[0].size").value("30 · 굽 +3cm"))
+                    .andExpect(jsonPath("$.items[0].quantity").value(2))
+                    .andExpect(jsonPath("$.items[0].available").value(true))
+                    .andExpect(jsonPath("$.items[1].size").value("30 · 굽 기본"))
+                    .andExpect(jsonPath("$.itemsAmountKrw").value(180_000 * 3));
+        }
+
+        @Test
+        @DisplayName("주문 · 내 주문에 굽까지 한 줄로 남고, 재고는 사이즈(30)로 센다")
+        void orderKeepsHeel() throws Exception {
+            String res = add("30 · 굽 +3cm", 1).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            String id = JsonPath.read(res, "$.items[0].id");
+            Object[] o = createOrder(id);
+            assertThat((long) o[1]).isEqualTo(180_000L + 3_000L);
+            confirm((String) o[0], "pk_heel", (long) o[1]).andExpect(status().isOk());
+            mockMvc.perform(get("/api/orders/" + o[0]).cookie(buyer))
+                    .andExpect(jsonPath("$.items[0].size").value("30 · 굽 +3cm"));
+
+            // 30 사이즈 재고를 1벌로 두면 굽이 무엇이든 2벌은 담지 못한다
+            jdbc.update("UPDATE product_sku SET stock = 1 WHERE size = '30' AND product_id = (SELECT id FROM product WHERE slug = 'ot-trousers')");
+            add("30 · 굽 +6cm", 2).andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @DisplayName("담은 뒤 관리자가 굽높이 옵션을 끄면 줄은 남되 '주문할 수 없음'")
+        void heelTurnedOff() throws Exception {
+            add("30 · 굽 +3cm", 1).andExpect(status().isOk());
+            jdbc.update("UPDATE product SET heel_option = FALSE WHERE slug = 'ot-trousers'");
+            mockMvc.perform(get("/api/cart").cookie(buyer))
+                    .andExpect(jsonPath("$.items[0].available").value(false))
+                    .andExpect(jsonPath("$.itemsAmountKrw").value(0));
+        }
+    }
+
     @Nested
     @DisplayName("주문 · 결제")
     class Payment {
