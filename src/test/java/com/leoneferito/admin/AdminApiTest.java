@@ -1005,6 +1005,21 @@ class AdminApiTest {
                     .andReturn().getResponse().getContentAsString(), "$.id");
             mockMvc.perform(asAdmin(get("/api/admin/products/" + copy))).andExpect(jsonPath("$.heelOption").value(true));
 
+            // 굽 추가 금액(V50) — 단계마다 적고, 손님 상세에는 굽 목록과 같은 길이(기본 0)로 나간다. 뒤쪽 0원은 남기지 않는다
+            mockMvc.perform(asAdmin(put("/api/admin/products/" + id)).contentType(MediaType.APPLICATION_JSON)
+                            .content(body("with-heel", images).replace("\"images\":", "\"heelPrices\": [0, 5000, 10000, 0, 0, 0], \"images\":")))
+                    .andExpect(status().isNoContent());
+            mockMvc.perform(asAdmin(get("/api/admin/products/" + id)))
+                    .andExpect(jsonPath("$.heelPrices").value(org.hamcrest.Matchers.contains(0, 5000, 10000)));
+            mockMvc.perform(get("/api/products/with-heel"))
+                    .andExpect(jsonPath("$.heelPrices").value(org.hamcrest.Matchers.contains(0, 0, 5000, 10000, 0, 0, 0)));
+            // 음수 · 일곱 칸은 400
+            for (String bad : new String[] {"[-1]", "[0,0,0,0,0,0,0]"}) {
+                mockMvc.perform(asAdmin(put("/api/admin/products/" + id)).contentType(MediaType.APPLICATION_JSON)
+                                .content(body("with-heel", images).replace("\"images\":", "\"heelPrices\": " + bad + ", \"images\":")))
+                        .andExpect(status().isBadRequest());
+            }
+
             // 끄면 손님 상세의 굽 목록이 빈다
             mockMvc.perform(asAdmin(put("/api/admin/products/" + id)).contentType(MediaType.APPLICATION_JSON)
                             .content(body("with-heel", images).replace("\"images\":", "\"heelOption\": false, \"images\":")))

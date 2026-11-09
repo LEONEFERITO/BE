@@ -82,7 +82,9 @@ public final class ProductResponse {
              * 고를 수 있는 굽높이(V49) — ["기본", "+1cm", … "+6cm"]. 비어 있으면 굽높이를 고르지 않는 상품.
              * 담을 때 사이즈 줄은 "270 · 굽 +3cm" (Product.HeelChoice)
              */
-            List<String> heels) {
+            List<String> heels,
+            /** heels 와 같은 순서 · 길이의 추가 금액(V50). 기본은 0. 한 벌 값 = 판매가 + 고른 굽의 금액 */
+            List<Long> heelPrices) {
     }
 
     /** 컬러 하나 — 이름과 동그라미 색(#RRGGBB) */

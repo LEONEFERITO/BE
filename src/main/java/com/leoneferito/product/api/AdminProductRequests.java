@@ -129,7 +129,10 @@ public final class AdminProductRequests {
             /** 컬러 옵션(V46). 관리자가 놓은 순서대로. 안 보내면(null) 저장된 값을 그대로 둔다 — 엑셀 등록 · 예전 화면이 지우지 않게 */
             @Valid @Size(max = 12) List<Color> colors,
             /** 굽높이 옵션(V49). 안 보내면(null) 저장된 값을 그대로 둔다 — 엑셀 등록 · 예전 화면이 끄지 않게 */
-            Boolean heelOption) {
+            Boolean heelOption,
+            /** 굽 추가 금액(V50) — +1cm ~ +6cm 순서, 비운 단계는 0. 안 보내면(null) 저장된 값을 그대로 둔다 */
+            @Size(max = 6) List<@jakarta.validation.constraints.NotNull @jakarta.validation.constraints.PositiveOrZero
+                    @jakarta.validation.constraints.Max(10_000_000) Long> heelPrices) {
 
         /** 굽높이는 보통 사이즈에만 붙는다 — 수트 구성(조각별 사이즈)과 함께 켜면 손님 화면이 줄을 만들 수 없다 */
         @AssertTrue(message = "굽높이 옵션은 수트 구성(조각별 사이즈) 상품에는 켤 수 없습니다.")

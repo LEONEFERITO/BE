@@ -128,6 +128,7 @@ public class AdminProductService {
         copy.setVestPriceKrw(src.getVestPriceKrw());
         copy.replaceColors(src.getColors());
         copy.setHeelOption(src.isHeelOption());
+        copy.replaceHeelPrices(src.getHeelPrices());
         copy.setDescription(src.getDescription());
         copy.setIntent(src.getIntent());
         copy.setFeatures(src.getFeatures());
@@ -250,6 +251,9 @@ public class AdminProductService {
         product.setVestPriceKrw(request.vestPriceKrw());
         if (request.heelOption() != null) {
             product.setHeelOption(request.heelOption());
+        }
+        if (request.heelPrices() != null) {
+            product.replaceHeelPrices(request.heelPrices());
         }
         if (request.colors() != null) {
             product.replaceColors(request.colors().stream()

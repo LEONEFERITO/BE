@@ -463,6 +463,27 @@ class OrderApiTest {
         }
 
         @Test
+        @DisplayName("굽 추가 금액(V50) — 한 벌 값 = 판매가 + 고른 굽의 금액. 장바구니 · 주문서 모두 서버가 계산한다")
+        void heelPrice() throws Exception {
+            // +1cm 5,000원 · +3cm 20,000원 (sort_order 0 = +1cm)
+            jdbc.update("INSERT INTO product_heel_price (product_id, sort_order, price_krw) "
+                    + "SELECT id, 0, 5000 FROM product WHERE slug = 'ot-trousers' "
+                    + "UNION ALL SELECT id, 2, 20000 FROM product WHERE slug = 'ot-trousers'");
+            mockMvc.perform(get("/api/products/ot-trousers"))
+                    .andExpect(jsonPath("$.heelPrices").value(org.hamcrest.Matchers.contains(0, 5000, 0, 20000, 0, 0, 0)));
+            add("30 · 굽 +3cm", 2).andExpect(status().isOk());
+            String res = add("30 · 굽 기본", 1).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            mockMvc.perform(get("/api/cart").cookie(buyer))
+                    .andExpect(jsonPath("$.items[0].unitPriceKrw").value(200_000))
+                    .andExpect(jsonPath("$.items[0].lineAmountKrw").value(400_000))
+                    .andExpect(jsonPath("$.items[1].unitPriceKrw").value(180_000))
+                    .andExpect(jsonPath("$.itemsAmountKrw").value(580_000));
+            String id = JsonPath.read(res, "$.items[0].id");
+            Object[] o = createOrder(id);
+            assertThat((long) o[1]).isIn(400_000L, 403_000L); // 굽 금액이 든 상품 합계(+ 배송비)
+        }
+
+        @Test
         @DisplayName("담은 뒤 관리자가 굽높이 옵션을 끄면 줄은 남되 '주문할 수 없음'")
         void heelTurnedOff() throws Exception {
             add("30 · 굽 +3cm", 1).andExpect(status().isOk());

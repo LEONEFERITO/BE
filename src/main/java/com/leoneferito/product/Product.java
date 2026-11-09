@@ -253,6 +253,17 @@ public class Product {
     @BatchSize(size = 50)
     private List<Color> colors = new ArrayList<>();
 
+    /**
+     * 굽높이 추가 금액 (V50, 2026-11-09 고객 "금액은 직접 작성"). 0 번째가 +1cm, 5 번째가 +6cm. 기본 굽은 언제나 0원.
+     * 비어 있거나 짧으면 없는 단계는 0원이다. 목록 화면이 여러 상품을 한 번에 그릴 때 묶어서 읽는다(BatchSize).
+     */
+    @ElementCollection(fetch = FetchType.LAZY)
+    @CollectionTable(name = "product_heel_price", joinColumns = @JoinColumn(name = "product_id"))
+    @OrderColumn(name = "sort_order")
+    @Column(name = "price_krw", nullable = false)
+    @BatchSize(size = 50)
+    private List<Long> heelPrices = new ArrayList<>();
+
     /** 컬러 하나 — 이름(손님 화면 · 주문서에 그대로)과 동그라미 색(#RRGGBB). */
     @Embeddable
     public record Color(@Column(nullable = false) String name, @Column(nullable = false) String hex) {
@@ -469,6 +480,34 @@ public class Product {
 
     public boolean isHeelOption() {
         return heelOption;
+    }
+
+    /** +1cm ~ +6cm 추가 금액(V50). 적은 만큼만 — 없는 단계는 0원 */
+    public List<Long> getHeelPrices() {
+        // 줄이 띄엄띄엄 있으면(직접 넣은 데이터) 빈 칸이 null 로 온다 — 0원으로 본다
+        return heelPrices.stream().map(v -> v == null ? 0L : v).toList();
+    }
+
+    /** 굽 추가 금액을 통째로 바꾼다(V50). 뒤쪽의 0원 단계는 줄을 남기지 않는다 */
+    public void replaceHeelPrices(List<Long> next) {
+        List<Long> trimmed = new ArrayList<>(next.stream().map(v -> v == null ? 0L : v).toList());
+        while (!trimmed.isEmpty() && trimmed.getLast() == 0L) {
+            trimmed.removeLast();
+        }
+        heelPrices.clear();
+        heelPrices.addAll(trimmed);
+    }
+
+    /** 이 굽의 추가 금액 — 기본 · 모르는 굽 · 적지 않은 단계는 0원 */
+    public long heelExtraKrw(String heel) {
+        int step = HeelChoice.HEELS.indexOf(heel); // 0 = 기본, 1 = +1cm …
+        Long price = step >= 1 && step <= heelPrices.size() ? heelPrices.get(step - 1) : null;
+        return price == null ? 0L : price;
+    }
+
+    /** 손님 화면용 — 굽 목록(HEELS)과 같은 순서 · 길이의 추가 금액. 기본은 0 */
+    public List<Long> heelExtrasForDisplay() {
+        return HeelChoice.HEELS.stream().map(this::heelExtraKrw).toList();
     }
 
     public void setHeelOption(boolean heelOption) {
@@ -836,9 +875,9 @@ public class Product {
      * 모르는 줄이거나 팔지 않는 구성이면 {@code null} — 담기 · 주문이 거절한다. 화면이 보낸 값은 믿지 않고 여기서 다시 정한다.
      */
     public Long priceFor(String size) {
-        // 굽높이 옵션(V49) — 굽까지 고른 줄이어야 한다. 굽은 추가 금액이 없다
+        // 굽높이 옵션(V49) — 굽까지 고른 줄이어야 한다. 값 = 판매가 + 고른 굽의 추가 금액(V50)
         if (heelOption) {
-            return HeelChoice.parse(size).isPresent() ? priceKrw : null;
+            return priceKrw == null ? null : HeelChoice.parse(size).map(h -> priceKrw + heelExtraKrw(h.heel())).orElse(null);
         }
         if (!isSuitSet()) {
             return priceKrw;
