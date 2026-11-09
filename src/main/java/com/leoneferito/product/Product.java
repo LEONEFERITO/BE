@@ -433,6 +433,17 @@ public class Product {
         return category;
     }
 
+    /**
+     * 분류를 바꾼다 (2026-11-09 고객 "이미 올린 제품도 카테고리 변경"). 주문 항목은 분류를 복사해 두지 않아 지난 주문에는 영향이 없다.
+     * 새 분류에 맞지 않는 세부 분류(트라우저 핏 · 신발 종류)는 비운다 — 부르는 쪽(AdminProductService.apply)이 곧바로 요청의 값을 다시 넣는다.
+     */
+    public void setCategory(ProductCategory category) {
+        this.category = Objects.requireNonNull(category, "category");
+        if (!ProductStyle.fits(style, category)) {
+            this.style = null;
+        }
+    }
+
     public ProductLine getLine() {
         return line;
     }

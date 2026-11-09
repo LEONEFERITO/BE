@@ -1190,14 +1190,28 @@ class AdminApiTest {
         }
 
         @Test
-        @DisplayName("수정은 저장된 분류로 본다 — 셔츠 상품에 트라우저로 실어 보낸 핏은 400")
-        void updateUsesStoredCategory() throws Exception {
-            String id = createProduct("stored-shirt");
+        @DisplayName("수정에서 분류를 바꿀 수 있다(2026-11-09) — 셔츠 → 트라우저 + 핏. 분류와 안 맞는 세부 분류는 400")
+        void updateChangesCategory() throws Exception {
+            String id = createProduct("moved-shirt");
             mockMvc.perform(asAdmin(put("/api/admin/products/" + id))
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content(body("stored-shirt", "TROUSERS", "\"REGULAR\"", null)))
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.code").value("STYLE_MISMATCH"));
+                            .content(body("moved-shirt", "TROUSERS", "\"REGULAR\"", null)))
+                    .andExpect(status().isNoContent());
+            mockMvc.perform(asAdmin(get("/api/admin/products/" + id)))
+                    .andExpect(jsonPath("$.category").value("TROUSERS"))
+                    .andExpect(jsonPath("$.style").value("REGULAR"));
+            // 다시 신발로 — 트라우저 핏을 그대로 실으면 400, 신발 종류면 저장
+            mockMvc.perform(asAdmin(put("/api/admin/products/" + id))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body("moved-shirt", "SHOES", "\"REGULAR\"", null)))
+                    .andExpect(status().isBadRequest());
+            mockMvc.perform(asAdmin(put("/api/admin/products/" + id))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body("moved-shirt", "SHOES", "\"LOAFER\"", null)))
+                    .andExpect(status().isNoContent());
+            mockMvc.perform(asAdmin(get("/api/admin/products/" + id)))
+                    .andExpect(jsonPath("$.category").value("SHOES"))
+                    .andExpect(jsonPath("$.style").value("LOAFER"));
         }
     }
 
