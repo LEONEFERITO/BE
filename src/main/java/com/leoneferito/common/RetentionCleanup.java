@@ -23,6 +23,8 @@ import org.springframework.transaction.annotation.Transactional;
  *   <li>비밀번호 재설정 링크: 만든 지 하루가 지나면 지운다(어차피 30분 뒤 쓸 수 없다).</li>
  *   <li>관리자 접속 · 처리 기록: {@value #ADMIN_LOG_YEARS}년이 지나면 지운다(방침의 보관 기간).</li>
  *   <li>아무 데서도 쓰지 않는 사진 · 영상: 올리고 {@value #ORPHAN_MEDIA_DAYS}일이 지났으면 지운다(파일까지, 2026-11-05).</li>
+ *   <li>접속 통계(V51): {@value #VISIT_YEARS}년이 지나면 지운다. 방문자 해시의 소금은 그날이 지나면 바로 지운다 —
+ *       지난 날짜의 해시를 누구였는지 되돌릴 수 없게.</li>
  * </ul>
  *
  * <p>주문 · 결제 기록(5년, 전자상거래법)은 첫 만기가 2031년이라 그때 맞춰 붙인다.
@@ -34,6 +36,7 @@ public class RetentionCleanup {
     private static final Logger log = LoggerFactory.getLogger(RetentionCleanup.class);
     static final int ADMIN_LOG_YEARS = 2;
     static final int ORPHAN_MEDIA_DAYS = 7;
+    static final int VISIT_YEARS = 2;
 
     private final JdbcTemplate jdbc;
     private final MediaStorage storage;
@@ -43,14 +46,14 @@ public class RetentionCleanup {
         this.storage = storage;
     }
 
-    public record Result(int photos, int resetTokens, int adminLogs, int media) {
+    public record Result(int photos, int resetTokens, int adminLogs, int media, int visits) {
     }
 
     @Scheduled(cron = "${app.retention.cron:0 10 4 * * *}", zone = "Asia/Seoul")
     public void daily() {
         Result r = run(Instant.now());
-        log.info("정리 작업 끝 반품사진={} 재설정링크={} 관리자기록={} 안쓰는사진={}",
-                r.photos(), r.resetTokens(), r.adminLogs(), r.media());
+        log.info("정리 작업 끝 반품사진={} 재설정링크={} 관리자기록={} 안쓰는사진={} 접속통계={}",
+                r.photos(), r.resetTokens(), r.adminLogs(), r.media(), r.visits());
     }
 
     @Transactional
@@ -81,7 +84,12 @@ public class RetentionCleanup {
         List<String> orphanKeys = deleteOrphanMedia(now);
         deleteFiles(orphanKeys, "사진");
 
-        return new Result(keys.size(), tokens, logs, orphanKeys.size());
+        // 5. 오래된 접속 통계 · 지난 날의 방문자 해시 소금(한국 날짜 기준 오늘 것만 남긴다)
+        int visits = jdbc.update("DELETE FROM site_visit WHERE visited_at < ?",
+                Timestamp.from(now.minus(Duration.ofDays(365L * VISIT_YEARS))));
+        jdbc.update("DELETE FROM site_visit_salt WHERE day < ?", java.time.LocalDate.ofInstant(now, java.time.ZoneId.of("Asia/Seoul")));
+
+        return new Result(keys.size(), tokens, logs, orphanKeys.size(), visits);
     }
 
     /**
