@@ -116,11 +116,12 @@ public class CartService {
         return skus;
     }
 
-    /** "95 사이즈는 품절입니다." · "95 사이즈는 2벌 남았습니다." · 수트 조각은 "자켓 L 사이즈는 …" */
+    /** "95 사이즈는 품절입니다." · "95 사이즈는 2벌 남았습니다." · 수트 조각은 "자켓 L 사이즈는 …" · 신발은 "2켤레"(2026-11-10) */
     static String stockMessage(ProductSku sku) {
         return sku.getStock() == null || sku.getStock() == 0
                 ? sku.displayName() + " 사이즈는 품절입니다."
-                : sku.displayName() + " 사이즈는 " + sku.getStock() + "벌 남았습니다. 수량을 줄여 주세요.";
+                : sku.displayName() + " 사이즈는 " + sku.getStock() + (sku.getProduct().getCategory() == com.leoneferito.product.ProductCategory.SHOES ? "켤레" : "벌")
+                        + " 남았습니다. 수량을 줄여 주세요.";
     }
 
     private Line toLine(CartItem item, Product p) {
