@@ -203,6 +203,11 @@ public class OrderService {
             Product p = byId.get(line.getProductId());
             // 한 벌 값 — 보통 상품은 판매가, 수트 구성(V43)은 고른 구성(3피스 · 2피스)의 값. 서버가 다시 정한다
             Long bundle = p == null ? null : CartService.bundleBase(line, byId, present);
+            java.util.Optional<Product> parent = CartService.bundleParent(line, byId, present);
+            // 함께 구매 전용 항목(V53)은 함께 담은 상품과 같은 주문이어야 한다
+            if (p != null && p.isAddonOnly() && parent.isEmpty()) {
+                throw new CartException("함께 구매 전용 상품은 함께 담은 상품과 같이 주문해 주세요. 장바구니를 확인해 주세요.");
+            }
             Long unitPrice = p == null ? null : p.priceFor(line.getSize(), bundle);
             if (p == null || p.getStatus() != ProductStatus.PUBLISHED || p.getPriceKrw() == null || unitPrice == null
                     || p.getLeadTimeDays() == null) {
@@ -215,7 +220,7 @@ public class OrderService {
             items.add(new OrderItem(UUID.randomUUID(), p.getId(), p.getSlug(), p.getName(),
                     p.mainImage().map(img -> mediaUrls.urlFor(img.getMedia())).orElse(null),
                     line.getSize(), line.getColor(), unitPrice, line.getQuantity(), p.getLeadTimeDays(), i,
-                    bundle == null ? null : byId.get(line.getAddonOf()).getName()));
+                    parent.map(Product::getName).orElse(null)));
         }
 
         long itemsAmount = items.stream().mapToLong(OrderItem::getLineAmountKrw).sum();

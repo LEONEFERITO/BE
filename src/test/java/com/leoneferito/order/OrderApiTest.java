@@ -540,6 +540,37 @@ class OrderApiTest {
         }
 
         @Test
+        @DisplayName("함께 구매 전용 항목(V53) — 혼자서는 담지도 주문하지도 못하고, 붙인 상품과 함께일 때만. 목록 · 상세 주소에도 없다")
+        void addonOnly() throws Exception {
+            jdbc.update("UPDATE product SET addon_only = TRUE WHERE slug = 'ot-trousers'");
+            jdbc.update("UPDATE product_addon SET price_krw = NULL");
+            mockMvc.perform(get("/api/products/ot-trousers")).andExpect(status().isNotFound());
+            mockMvc.perform(get("/api/products"))
+                    .andExpect(jsonPath("$[*].slug").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("ot-trousers"))));
+            mockMvc.perform(get("/api/products/ot-shirt")).andExpect(jsonPath("$.addons[0].custom").value(true));
+
+            send(buyer, post("/api/cart/items"), "{\"slug\":\"ot-trousers\",\"size\":\"30\",\"quantity\":1}")
+                    .andExpect(status().isBadRequest());
+            String res = addAddon("ot-shirt", 1).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            String trousers = JsonPath.read(res, "$.items[0].id");
+            mockMvc.perform(get("/api/cart").cookie(buyer))
+                    .andExpect(jsonPath("$.items[0].available").value(false))
+                    .andExpect(jsonPath("$.items[0].unavailableReason").value("브라운 셔츠와(과) 함께 주문할 수 있는 상품입니다."))
+                    .andExpect(jsonPath("$.itemsAmountKrw").value(0));
+            send(buyer, post("/api/orders"), orderBody(trousers)).andExpect(status().isBadRequest());
+
+            String shirt = addToCart("ot-shirt", "100", 1);
+            mockMvc.perform(get("/api/cart").cookie(buyer))
+                    .andExpect(jsonPath("$.items[0].available").value(true))
+                    .andExpect(jsonPath("$.items[0].unitPriceKrw").value(180_000))
+                    .andExpect(jsonPath("$.items[0].bundleApplied").value(true));
+            Object[] o = createOrder(trousers, shirt);
+            confirm((String) o[0], "pk_extra", (long) o[1]).andExpect(status().isOk());
+            mockMvc.perform(get("/api/orders/" + o[0]).cookie(buyer))
+                    .andExpect(jsonPath("$.items[0].addonOf").value("브라운 셔츠"));
+        }
+
+        @Test
         @DisplayName("주문서도 같은 규칙 — 셔츠와 함께 주문하면 150,000원 · 주문에 «함께 구매» 가 남고, 트라우저만 주문하면 180,000원")
         void orderUsesSameRule() throws Exception {
             String res = addAddon("ot-shirt", 1).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();

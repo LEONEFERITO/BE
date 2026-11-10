@@ -75,7 +75,14 @@ public final class AdminProductResponse {
     }
 
     /** 함께 구매 상품 하나 — 이름 · 상태는 화면 표시용(지금 값). priceKrw 가 없으면 원래 판매가 */
-    public record Addon(UUID productId, String slug, String name, String status, Long basePriceKrw, Long priceKrw) {
+    public record Addon(UUID productId, String slug, String name, String status, Long basePriceKrw, Long priceKrw,
+                        /** 직접 입력한 항목이면 그 내용(V53). 등록된 상품을 붙인 줄은 null */
+                        Custom custom) {
+    }
+
+    /** 직접 입력한 함께 구매 항목(V53) */
+    public record Custom(String name, String description, UUID mediaId, String imageUrl, Long priceKrw,
+                         List<String> colors, List<String> sizes) {
     }
 
     public record Internal(String adminName, String fabricSupplier, String fabricCollection, String fabricCode,

@@ -214,6 +214,13 @@ public class Product {
     @Column(nullable = false)
     private ProductStatus status = ProductStatus.DRAFT;
 
+    /**
+     * 함께 구매 전용 (V53, 2026-11-10 고객 "함께 구매 내용을 직접 기재") — 관리자가 함께 구매 칸에 직접 적은 항목.
+     * 관리자 목록 · 손님 목록 · 상세 주소에 나오지 않고, 붙인 상품과 같은 주문일 때만 살 수 있다. 언제나 공개 상태다(고시 · 대표 사진을 묻지 않는다).
+     */
+    @Column(name = "addon_only", nullable = false)
+    private boolean addonOnly;
+
     /** 주문 이력이 있어 행만 남기고 지운 시각(V47). 있으면 관리자 목록 · 손님 화면 어디에도 없다. */
     @Column(name = "deleted_at")
     private Instant deletedAt;
@@ -429,6 +436,16 @@ public class Product {
         this.status = ProductStatus.DRAFT;
         this.slug = slug + "--deleted-" + id.toString().substring(0, 8);
         this.deletedAt = now;
+    }
+
+    public boolean isAddonOnly() {
+        return addonOnly;
+    }
+
+    /** 함께 구매 전용 상품으로 만든다(V53). 붙인 상품이 보일 때 함께 보이므로 바로 공개 상태로 둔다 */
+    public void markAddonOnly() {
+        this.addonOnly = true;
+        this.status = ProductStatus.PUBLISHED;
     }
 
     /** 지우지 않은 상품인가. 관리자 화면은 이것만 다룬다. */

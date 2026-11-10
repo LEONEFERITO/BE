@@ -66,14 +66,20 @@ public class CartService {
      * 아니면 null — 원래 판매가로 계산한다(주문할 수 없게 막지는 않는다).
      */
     static Long bundleBase(CartItem item, Map<UUID, Product> byId, Set<UUID> present) {
+        return bundleParent(item, byId, present)
+                .flatMap(parent -> parent.addonFor(item.getProductId())).map(Product.Addon::priceKrw).orElse(null);
+    }
+
+    /** 이 줄을 함께 담은 상품(수트) — 같은 장바구니 · 주문(present)에 있고, 공개 중이며, 여전히 이 상품을 붙여 두었을 때만 */
+    static java.util.Optional<Product> bundleParent(CartItem item, Map<UUID, Product> byId, Set<UUID> present) {
         if (item.getAddonOf() == null || !present.contains(item.getAddonOf())) {
-            return null;
+            return java.util.Optional.empty();
         }
         Product parent = byId.get(item.getAddonOf());
-        if (parent == null || parent.getStatus() != ProductStatus.PUBLISHED) {
-            return null;
+        if (parent == null || parent.getStatus() != ProductStatus.PUBLISHED || parent.addonFor(item.getProductId()).isEmpty()) {
+            return java.util.Optional.empty();
         }
-        return parent.addonFor(item.getProductId()).map(Product.Addon::priceKrw).orElse(null);
+        return java.util.Optional.of(parent);
     }
 
     /**
@@ -93,6 +99,10 @@ public class CartService {
                 throw new CartException("이 상품은 함께 구매할 수 없습니다. 상품 화면에서 다시 골라 주세요.");
             }
             addonOf = parent.getId();
+        }
+        // 함께 구매 전용 항목(V53)은 붙인 상품의 상세에서만 담는다
+        if (product.isAddonOnly() && addonOf == null) {
+            throw new CartException("이 상품은 함께 구매로만 담을 수 있습니다.");
         }
         if (product.getPriceKrw() == null) {
             throw new CartException("아직 가격이 정해지지 않은 상품입니다.");
@@ -176,8 +186,12 @@ public class CartService {
         Product parent = item.getAddonOf() == null ? null : byId.get(item.getAddonOf());
         // 담은 뒤에 관리자가 컬러를 지웠으면(V46) 그 줄은 주문할 수 없다 — 지우지 않고 이유를 보여 준다
         boolean colorOk = published && p.acceptsColor(item.getColor());
-        boolean available = stockOk && price != null && colorOk;
+        // 함께 구매 전용 항목(V53) — 함께 담은 상품이 장바구니에 없으면 주문할 수 없다
+        boolean together = published && bundleParent(item, byId, present).isPresent();
+        boolean lonely = published && p.isAddonOnly() && !together;
+        boolean available = stockOk && price != null && colorOk && !lonely;
         String reason = !published ? "판매가 끝난 상품입니다."
+                : lonely ? (parent == null ? "함께 구매 전용 상품입니다." : parent.getName() + "와(과) 함께 주문할 수 있는 상품입니다.")
                 : !colorOk ? "이 컬러는 지금 주문할 수 없습니다."
                 : !sizeOk ? "이 사이즈는 지금 주문할 수 없습니다."
                 : !stockOk ? stockMessage(short_)
@@ -197,7 +211,7 @@ public class CartService {
                 available,
                 reason,
                 parent == null ? null : parent.getName(),
-                bundle != null);
+                together);
     }
 
     private static Long boxed(java.util.OptionalLong v) {
@@ -214,8 +228,8 @@ public class CartService {
 
     /**
      * color — 고른 컬러 이름(V46). 컬러가 없는 상품은 빈 값.
-     * addonOf — «함께 구매» 로 담은 줄이면 함께 담은 상품 이름(V52), bundleApplied — 함께 구매 금액이 지금 적용됐는가
-     * (그 상품이 장바구니에서 빠지면 false — 원래 판매가로 계산된다).
+     * addonOf — «함께 구매» 로 담은 줄이면 함께 담은 상품 이름(V52), bundleApplied — 그 상품이 지금 장바구니에 함께 있는가
+     * (빠지면 false — 함께 구매 금액 대신 원래 판매가로 계산되고, 함께 구매 전용 항목(V53)은 주문할 수 없다).
      */
     public record Line(UUID id, String slug, String name, String imageUrl, String size, String color, int quantity,
                        Long unitPriceKrw, long lineAmountKrw, Short leadTimeDays,

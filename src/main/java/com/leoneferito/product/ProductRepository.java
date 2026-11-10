@@ -24,6 +24,7 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
             SELECT DISTINCT p FROM Product p
             LEFT JOIN FETCH p.images
             WHERE p.status = com.leoneferito.product.ProductStatus.PUBLISHED
+              AND p.addonOnly = false
             ORDER BY p.displayOrder ASC, p.createdAt DESC
             """)
     List<Product> findPublished();
@@ -33,6 +34,7 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
             LEFT JOIN FETCH p.images
             WHERE p.status = com.leoneferito.product.ProductStatus.PUBLISHED
               AND p.category = :category
+              AND p.addonOnly = false
             ORDER BY p.displayOrder ASC, p.createdAt DESC
             """)
     List<Product> findPublishedByCategory(@Param("category") ProductCategory category);
@@ -63,6 +65,7 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
             LEFT JOIN FETCH p.images i
             LEFT JOIN FETCH i.media
             WHERE p.deletedAt IS NULL
+              AND p.addonOnly = false
             ORDER BY p.updatedAt DESC
             """)
     List<Product> findAllForAdmin();

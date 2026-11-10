@@ -68,6 +68,8 @@ public class ProductQueryService {
 
     public ProductResponse.Detail detail(String slug) {
         Product product = products.findPublishedBySlug(slug)
+                // 함께 구매 전용 항목(V53)은 자기 상세가 없다 — 붙인 상품의 상세에서만 고른다
+                .filter(p -> !p.isAddonOnly())
                 // 비공개 상품도 같은 예외다. 403 으로 나누면 slug 의 존재가 샌다.
                 .orElseThrow(() -> new ResourceNotFoundException("공개 상품 없음: slug=" + slug));
 
@@ -138,7 +140,8 @@ public class ProductQueryService {
                         && e.getValue().getPriceKrw() != null && !e.getValue().isSuitSet())
                 .map(e -> {
                     Product t = e.getValue();
-                    return new ProductResponse.Addon(t.getSlug(), t.getName(), t.getCategory().name(),
+                    return new ProductResponse.Addon(t.isAddonOnly() ? t.getDescription() : null, t.isAddonOnly(),
+                            t.getSlug(), t.getName(), t.getCategory().name(),
                             t.mainImage().map(img -> mediaUrls.urlFor(img.getMedia())).orElse(null),
                             e.getKey().priceKrw() != null ? e.getKey().priceKrw() : t.getPriceKrw(), t.getPriceKrw(),
                             t.getColors().stream().map(c -> new ProductResponse.Color(c.name(), c.hex())).toList(),

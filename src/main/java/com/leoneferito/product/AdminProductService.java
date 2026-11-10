@@ -125,7 +125,9 @@ public class AdminProductService {
         copy.replaceColors(src.getColors());
         copy.setHeelOption(src.isHeelOption());
         copy.replaceHeelPrices(src.getHeelPrices());
-        copy.replaceAddons(src.getAddons());
+        // 등록된 상품을 붙인 줄만 복사한다 — 직접 입력한 항목(V53)은 원본 것이라 복제본에서 새로 적는다
+        copy.replaceAddons(src.getAddons().stream()
+                .filter(a -> products.findById(a.productId()).map(t -> !t.isAddonOnly()).orElse(false)).toList());
         copy.setDescription(src.getDescription());
         copy.setIntent(src.getIntent());
         copy.setFeatures(src.getFeatures());
@@ -177,6 +179,12 @@ public class AdminProductService {
                 .orElseThrow(() -> new ResourceNotFoundException("상품 없음: id=" + id));
         boolean wasPublished = product.getStatus() == ProductStatus.PUBLISHED;
         String slug = product.getSlug();
+        // 이 상품에 직접 입력해 둔 함께 구매 항목(V53)도 함께 지운다 — 혼자서는 팔 수 없는 것들이다
+        List<Product> extras = product.getAddons().stream()
+                .map(a -> products.findById(a.productId()).filter(Product::isAddonOnly).filter(Product::isLive).orElse(null))
+                .filter(java.util.Objects::nonNull).toList();
+        product.replaceAddons(List.of());
+        extras.forEach(this::removeExtra);
         int carts = products.deleteCartItems(id);
         if (products.hasOrderItems(id)) {
             int banners = products.deleteHeroBanners(id);
@@ -253,9 +261,7 @@ public class AdminProductService {
         if (request.heelPrices() != null) {
             product.replaceHeelPrices(request.heelPrices());
         }
-        if (request.addons() != null) {
-            product.replaceAddons(request.addons().stream().map(a -> checkedAddon(product, a)).toList());
-        }
+
         if (request.colors() != null) {
             product.replaceColors(request.colors().stream()
                     .map(c -> new Product.Color(c.name().trim(), c.hex().toUpperCase(java.util.Locale.ROOT))).toList());
@@ -302,6 +308,95 @@ public class AdminProductService {
 
         product.replaceImages(toImages(request.images()));
         product.replaceSkus(toSkus(request.skus()));
+
+        // 함께 구매 상품(V52 · V53) — 제작 기간이 정해진 뒤에 한다(직접 입력한 항목은 이 상품의 제작 기간을 따른다)
+        if (request.addons() != null) {
+            syncAddons(product, request.addons());
+        }
+        for (Product.Addon a : product.getAddons()) {
+            products.findById(a.productId()).filter(Product::isAddonOnly).ifPresent(extra -> {
+                extra.setLeadTimeDays(product.getLeadTimeDays());
+                extra.setLeadTimeMinDays(product.getLeadTimeMinDays());
+            });
+        }
+    }
+
+    /** 사이즈를 적지 않은 직접 입력 항목의 한 칸(V53) — 손님 화면은 고를 것이 하나라 처음부터 골라 둔다 */
+    static final String FREE_SIZE = "FREE";
+
+    /** 함께 구매 목록을 통째로 바꾼다. 목록에서 빠진 직접 입력 항목은 함께 지운다 */
+    private void syncAddons(Product product, List<AdminProductRequests.Addon> requested) {
+        List<UUID> before = product.getAddons().stream().map(Product.Addon::productId).toList();
+        List<Product.Addon> next = new ArrayList<>();
+        for (AdminProductRequests.Addon a : requested) {
+            next.add(a.custom() == null ? checkedAddon(product, a) : new Product.Addon(savedExtra(product, a).getId(), null));
+        }
+        product.replaceAddons(next);
+        for (UUID id : before) {
+            if (next.stream().noneMatch(n -> n.productId().equals(id))) {
+                products.findById(id).filter(Product::isAddonOnly).filter(Product::isLive).ifPresent(this::removeExtra);
+            }
+        }
+    }
+
+    /**
+     * 직접 입력한 항목을 함께 구매 전용 상품으로 저장한다(V53). 새 항목이면 만들고, 이미 있으면(이 상품에 붙어 있는 것만) 고친다.
+     * 사진 · 사이즈는 바뀌었을 때만 갈아 끼운다 — 비우고 flush 한 뒤 채우는 순서는 {@link #apply} 와 같은 이유다.
+     */
+    private Product savedExtra(Product owner, AdminProductRequests.Addon a) {
+        AdminProductRequests.Custom c = a.custom();
+        boolean fresh = a.productId() == null;
+        Product extra;
+        if (fresh) {
+            extra = new Product(UUID.randomUUID(), "addon-" + UUID.randomUUID().toString().replace("-", "").substring(0, 16),
+                    ProductCategory.ACCESSORIES, null);
+            extra.markAddonOnly();
+        } else {
+            extra = products.findById(a.productId()).filter(Product::isLive).filter(Product::isAddonOnly)
+                    .filter(x -> owner.addonFor(x.getId()).isPresent())
+                    .orElseThrow(() -> new AddonInvalidException("직접 입력한 함께 구매 항목을 찾지 못했습니다. 화면을 새로 고쳐 주세요."));
+        }
+        String name = c.name().trim();
+        extra.setName(name);
+        extra.setDescription(blank(c.description()));
+        extra.setPriceKrw(c.priceKrw());
+        // 색 값은 쓰지 않는다(함께 구매 칸은 이름으로 고른다) — 자리만 채운다
+        extra.replaceColors(c.colors() == null ? List.of()
+                : c.colors().stream().map(n -> new Product.Color(n.trim(), "#CCCCCC")).toList());
+
+        List<String> sizes = c.sizes() == null || c.sizes().isEmpty() ? List.of(FREE_SIZE)
+                : c.sizes().stream().map(String::trim).toList();
+        UUID currentMedia = extra.mainImage().map(i -> i.getMedia().getId()).orElse(null);
+        List<String> currentSizes = extra.getSkus().stream()
+                .sorted(java.util.Comparator.comparingInt(ProductSku::getSortOrder)).map(ProductSku::getSize).toList();
+        if (fresh || !java.util.Objects.equals(currentMedia, c.mediaId()) || !currentSizes.equals(sizes)) {
+            if (!fresh) {
+                extra.clearChildren();
+                products.flush();
+            }
+            if (c.mediaId() != null) {
+                MediaAsset media = mediaAssets.findById(c.mediaId())
+                        .orElseThrow(() -> new ResourceNotFoundException("이미지 없음: mediaId=" + c.mediaId()));
+                extra.addImage(new ProductImage(UUID.randomUUID(), media, ProductImageKind.MAIN, name, 0));
+            }
+            for (int i = 0; i < sizes.size(); i++) {
+                extra.addSku(new ProductSku(UUID.randomUUID(), sizes.get(i), i));
+            }
+        }
+        if (fresh) {
+            products.save(extra);
+        }
+        return extra;
+    }
+
+    /** 직접 입력한 항목을 지운다 — 주문 이력이 있으면 행은 남긴다({@link #delete} 와 같은 규칙) */
+    private void removeExtra(Product extra) {
+        products.deleteCartItems(extra.getId());
+        if (products.hasOrderItems(extra.getId())) {
+            extra.markDeleted(java.time.Instant.now());
+        } else {
+            products.delete(extra);
+        }
     }
 
     private List<ProductImage> toImages(List<AdminProductRequests.Image> requested) {
@@ -377,7 +472,8 @@ public class AdminProductService {
         if (a.productId().equals(owner.getId())) {
             throw new AddonInvalidException("자기 자신은 함께 구매 상품으로 넣을 수 없습니다.");
         }
-        Product target = products.findById(a.productId()).filter(Product::isLive)
+        // 직접 입력한 항목(V53)은 내용과 함께 와야 한다 — 다른 상품에 붙은 항목을 가져다 붙일 수도 없다
+        Product target = products.findById(a.productId()).filter(Product::isLive).filter(t -> !t.isAddonOnly())
                 .orElseThrow(() -> new AddonInvalidException("함께 구매 상품으로 고른 상품이 없습니다. 목록을 새로 고쳐 주세요."));
         if (target.isSuitSet()) {
             throw new AddonInvalidException("수트 구성(조각별 사이즈) 상품은 함께 구매 상품으로 넣을 수 없습니다.");

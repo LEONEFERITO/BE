@@ -136,7 +136,12 @@ public final class ProductResponse {
      * 함께 구매 상품 하나(V52). priceKrw — 이 상품과 함께 살 때의 값(관리자가 정한 함께 구매 금액, 없으면 판매가),
      * basePriceKrw — 원래 판매가. 굽 추가 금액(heelPrices)은 그대로 더한다. 담을 때는 slug · 사이즈 · 컬러에 addonOf(이 상품 slug)를 실어 보낸다.
      */
-    public record Addon(String slug, String name, String category, String imageUrl, Long priceKrw, Long basePriceKrw,
+    public record Addon(
+            /** 직접 입력한 항목의 설명(V53). 등록된 상품을 붙인 줄은 null */
+            String description,
+            /** 직접 입력한 항목인가(V53) — 자기 상세 주소가 없다 */
+            boolean custom,
+            String slug, String name, String category, String imageUrl, Long priceKrw, Long basePriceKrw,
                         List<Color> colors, List<String> heels, List<Long> heelPrices, List<Sku> skus) {
     }
 

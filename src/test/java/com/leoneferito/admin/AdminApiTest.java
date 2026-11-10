@@ -1089,6 +1089,81 @@ class AdminApiTest {
         }
 
         @Test
+        @DisplayName("직접 입력한 함께 구매 항목(V53) — 이름 · 설명 · 사진 · 금액 · 컬러 · 사이즈가 저장되고, 목록 · 상세 주소에는 없으며, 빼면 지워진다")
+        void customAddon() throws Exception {
+            String suit = createProduct("custom-suit");
+            String photo = uploadImage();
+            String images = "[ { \"mediaId\": \"%s\", \"kind\": \"MAIN\", \"alt\": \"대표\", \"sortOrder\": 0 } ]".formatted(uploadImage());
+            java.util.function.Function<String, String> withAddons = json -> body("custom-suit", images)
+                    .replace("\"images\":", "\"addons\": " + json + ", \"images\":");
+            String tie = "{\"name\":\" 실크 타이 \",\"description\":\"착장에 함께 맨 타이\",\"mediaId\":\"" + photo
+                    + "\",\"priceKrw\":45000,\"colors\":[\"네이비\",\"버건디\"],\"sizes\":[]}";
+
+            mockMvc.perform(asAdmin(put("/api/admin/products/" + suit)).contentType(MediaType.APPLICATION_JSON)
+                    .content(withAddons.apply("[ {\"custom\":" + tie + "} ]"))).andExpect(status().isNoContent());
+            String edit = mockMvc.perform(asAdmin(get("/api/admin/products/" + suit)))
+                    .andExpect(jsonPath("$.addons.length()").value(1))
+                    .andExpect(jsonPath("$.addons[0].custom.name").value("실크 타이"))
+                    .andExpect(jsonPath("$.addons[0].custom.description").value("착장에 함께 맨 타이"))
+                    .andExpect(jsonPath("$.addons[0].custom.priceKrw").value(45000))
+                    .andExpect(jsonPath("$.addons[0].custom.mediaId").value(photo))
+                    .andExpect(jsonPath("$.addons[0].custom.imageUrl").isNotEmpty())
+                    .andExpect(jsonPath("$.addons[0].custom.colors").value(org.hamcrest.Matchers.contains("네이비", "버건디")))
+                    .andExpect(jsonPath("$.addons[0].custom.sizes.length()").value(0))
+                    .andReturn().getResponse().getContentAsString();
+            String extraId = com.jayway.jsonpath.JsonPath.read(edit, "$.addons[0].productId");
+            String extraSlug = com.jayway.jsonpath.JsonPath.read(edit, "$.addons[0].slug");
+
+            // 관리자 목록 · 수정 화면에는 따로 나오지 않는다
+            mockMvc.perform(asAdmin(get("/api/admin/products")))
+                    .andExpect(jsonPath("$[*].id").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem(extraId))));
+            mockMvc.perform(asAdmin(get("/api/admin/products/" + extraId))).andExpect(status().isNotFound());
+
+            // 손님: 붙인 상품의 상세에만 — 목록 · 자기 주소에는 없다
+            mockMvc.perform(asAdmin(post("/api/admin/products/" + suit + "/publish"))).andExpect(status().isNoContent());
+            mockMvc.perform(get("/api/products/custom-suit"))
+                    .andExpect(jsonPath("$.addons[0].custom").value(true))
+                    .andExpect(jsonPath("$.addons[0].name").value("실크 타이"))
+                    .andExpect(jsonPath("$.addons[0].description").value("착장에 함께 맨 타이"))
+                    .andExpect(jsonPath("$.addons[0].priceKrw").value(45000))
+                    .andExpect(jsonPath("$.addons[0].imageUrl").isNotEmpty())
+                    .andExpect(jsonPath("$.addons[0].colors[1].name").value("버건디"))
+                    .andExpect(jsonPath("$.addons[0].skus[0].size").value("FREE"));
+            mockMvc.perform(get("/api/products"))
+                    .andExpect(jsonPath("$[*].slug").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem(extraSlug))));
+            mockMvc.perform(get("/api/products/" + extraSlug)).andExpect(status().isNotFound());
+
+            // 고치기 — 같은 항목 그대로(id 유지), 이름 · 사이즈가 바뀐다
+            String shirt = "{\"name\":\"드레스 셔츠\",\"mediaId\":\"" + photo + "\",\"priceKrw\":60000,\"colors\":[],\"sizes\":[\"95\",\"100\"]}";
+            mockMvc.perform(asAdmin(put("/api/admin/products/" + suit)).contentType(MediaType.APPLICATION_JSON)
+                            .content(withAddons.apply("[ {\"productId\":\"" + extraId + "\",\"custom\":" + shirt + "} ]")))
+                    .andExpect(status().isNoContent());
+            mockMvc.perform(asAdmin(get("/api/admin/products/" + suit)))
+                    .andExpect(jsonPath("$.addons[0].productId").value(extraId))
+                    .andExpect(jsonPath("$.addons[0].custom.name").value("드레스 셔츠"))
+                    .andExpect(jsonPath("$.addons[0].custom.priceKrw").value(60000))
+                    .andExpect(jsonPath("$.addons[0].custom.sizes").value(org.hamcrest.Matchers.contains("95", "100")));
+            mockMvc.perform(asAdmin(get("/api/admin/products"))).andExpect(status().isOk());
+
+            // 이름 없음 · 금액 없음 · 겹친 사이즈 · 컬러에 / · 아무것도 없음은 400
+            for (String bad : new String[] {
+                    "[ {\"custom\":{\"name\":\" \",\"priceKrw\":1000}} ]",
+                    "[ {\"custom\":{\"name\":\"타이\"}} ]",
+                    "[ {\"custom\":{\"name\":\"타이\",\"priceKrw\":1000,\"sizes\":[\"M\",\"M\"]}} ]",
+                    "[ {\"custom\":{\"name\":\"타이\",\"priceKrw\":1000,\"colors\":[\"블랙/화이트\"]}} ]",
+                    "[ {} ]"}) {
+                mockMvc.perform(asAdmin(put("/api/admin/products/" + suit)).contentType(MediaType.APPLICATION_JSON)
+                        .content(withAddons.apply(bad))).andExpect(status().isBadRequest());
+            }
+
+            // 목록에서 빼면 항목도 지워진다
+            mockMvc.perform(asAdmin(put("/api/admin/products/" + suit)).contentType(MediaType.APPLICATION_JSON)
+                    .content(withAddons.apply("[]"))).andExpect(status().isNoContent());
+            mockMvc.perform(asAdmin(get("/api/admin/products/" + suit))).andExpect(jsonPath("$.addons.length()").value(0));
+            assertThat(products.findById(java.util.UUID.fromString(extraId))).isEmpty();
+        }
+
+        @Test
         @DisplayName("메인 사진 다섯 장(V41) — 대표 · 착용 · 디테일 · 추가 1 · 추가 2 가 손님 상세에 나간다")
         void fivePhotos() throws Exception {
             String id = createProduct("five-photos");

@@ -275,8 +275,44 @@ public final class AdminProductRequests {
     }
 
     /** 컬러 하나(V46) — 이름은 손님 화면 · 주문서에 그대로 나간다. 구성 줄 구분 글자(/ ·)는 못 쓴다 */
-    /** 함께 구매 상품 하나(V52) — 붙일 상품과 함께 구매 금액(비우면 원래 판매가) */
-    public record Addon(@NotNull UUID productId, @Positive @jakarta.validation.constraints.Max(100_000_000) Long priceKrw) {
+    /**
+     * 함께 구매 상품 하나. 둘 중 하나다:
+     * <ul>
+     *   <li>등록된 상품을 붙인다(V52) — productId 와 함께 구매 금액(비우면 원래 판매가)</li>
+     *   <li>직접 입력한다(V53) — custom. productId 는 이미 저장된 항목을 고칠 때만(새 항목은 비운다)</li>
+     * </ul>
+     */
+    public record Addon(UUID productId, @Positive @jakarta.validation.constraints.Max(100_000_000) Long priceKrw,
+                        @Valid Custom custom) {
+
+        @AssertTrue(message = "함께 구매 상품을 고르거나 내용을 입력해 주세요.")
+        public boolean isTargetGiven() {
+            return productId != null || custom != null;
+        }
+    }
+
+    /** 직접 입력한 함께 구매 항목(V53) — 이름 · 설명 · 사진 · 금액 · 컬러 · 사이즈. 컬러 · 사이즈를 비우면 고르지 않는다 */
+    public record Custom(
+            @NotNull @jakarta.validation.constraints.NotBlank @Size(max = NAME_MAX) String name,
+            @Size(max = 200) String description,
+            UUID mediaId,
+            @NotNull @Positive @jakarta.validation.constraints.Max(100_000_000) Long priceKrw,
+            @Size(max = 12) List<@jakarta.validation.constraints.NotBlank @Size(max = 20)
+                    @Pattern(regexp = "^[^/·]*$", message = "컬러 이름에는 / 와 · 를 쓸 수 없습니다.") String> colors,
+            @Size(max = 20) List<@jakarta.validation.constraints.NotBlank @Size(max = 20) String> sizes) {
+
+        @AssertTrue(message = "같은 컬러 · 사이즈를 두 번 넣었습니다.")
+        public boolean isOptionUnique() {
+            return unique(colors) && unique(sizes);
+        }
+
+        private static boolean unique(List<String> values) {
+            if (values == null) {
+                return true;
+            }
+            List<String> t = values.stream().filter(java.util.Objects::nonNull).map(String::trim).toList();
+            return t.size() == new java.util.HashSet<>(t).size();
+        }
     }
 
     public record Color(

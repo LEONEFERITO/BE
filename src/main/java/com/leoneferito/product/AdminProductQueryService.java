@@ -28,7 +28,8 @@ public class AdminProductQueryService {
     }
 
     public AdminProductResponse.Edit edit(UUID id) {
-        Product product = products.findById(id).filter(Product::isLive)
+        // 함께 구매 전용 항목(V53)은 붙인 상품의 화면에서만 고친다
+        Product product = products.findById(id).filter(Product::isLive).filter(p -> !p.isAddonOnly())
                 .orElseThrow(() -> new ResourceNotFoundException("상품 없음: id=" + id));
         return toEdit(product);
     }
@@ -42,9 +43,20 @@ public class AdminProductQueryService {
                 .map(a -> {
                     Product t = byId.get(a.productId());
                     return new AdminProductResponse.Addon(t.getId(), t.getSlug(), t.getName(), t.getStatus().name(),
-                            t.getPriceKrw(), a.priceKrw());
+                            t.getPriceKrw(), a.priceKrw(), t.isAddonOnly() ? custom(t) : null);
                 })
                 .toList();
+    }
+
+    /** 직접 입력한 항목(V53)의 지금 내용 — 화면이 그대로 칸에 채운다. 사이즈가 «FREE» 하나면 사이즈를 적지 않은 것 */
+    private AdminProductResponse.Custom custom(Product t) {
+        List<String> sizes = t.getSkus().stream().sorted(java.util.Comparator.comparingInt(ProductSku::getSortOrder))
+                .map(ProductSku::getSize).toList();
+        return new AdminProductResponse.Custom(t.getName(), t.getDescription(),
+                t.mainImage().map(i -> i.getMedia().getId()).orElse(null),
+                t.mainImage().map(i -> mediaUrls.urlFor(i.getMedia())).orElse(null),
+                t.getPriceKrw(), t.getColors().stream().map(Product.Color::name).toList(),
+                sizes.equals(List.of(AdminProductService.FREE_SIZE)) ? List.of() : sizes);
     }
 
     private AdminProductResponse.Row toRow(Product p) {
