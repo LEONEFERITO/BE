@@ -66,10 +66,16 @@ public final class AdminProductResponse {
             /** 굽높이 옵션 (V49) */
             boolean heelOption,
             /** 굽 추가 금액 (V50) — +1cm ~ +6cm, 적은 만큼만(없는 단계는 0원) */
-            List<Long> heelPrices) {
+            List<Long> heelPrices,
+            /** 함께 구매 상품 (V52) — 관리자가 놓은 순서 */
+            List<Addon> addons) {
     }
 
     public record Color(String name, String hex) {
+    }
+
+    /** 함께 구매 상품 하나 — 이름 · 상태는 화면 표시용(지금 값). priceKrw 가 없으면 원래 판매가 */
+    public record Addon(UUID productId, String slug, String name, String status, Long basePriceKrw, Long priceKrw) {
     }
 
     public record Internal(String adminName, String fabricSupplier, String fabricCollection, String fabricCode,

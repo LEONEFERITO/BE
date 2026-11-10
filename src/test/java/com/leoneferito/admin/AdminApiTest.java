@@ -1036,6 +1036,59 @@ class AdminApiTest {
         }
 
         @Test
+        @DisplayName("함께 구매 상품(V52) — 붙인 상품 · 금액이 저장되고, 공개된 것만 손님 상세에 나간다. 자기 자신 · 중복은 400, 복제도 따라간다")
+        void addons() throws Exception {
+            String suit = createProduct("addon-suit");
+            String tie = createProduct("addon-tie");
+            String images = "[ { \"mediaId\": \"%s\", \"kind\": \"MAIN\", \"alt\": \"대표\", \"sortOrder\": 0 } ]".formatted(uploadImage());
+            String withAddon = body("addon-suit", images).replace("\"images\":",
+                    "\"addons\": [ {\"productId\":\"" + tie + "\",\"priceKrw\":50000} ], \"images\":");
+            mockMvc.perform(asAdmin(put("/api/admin/products/" + suit)).contentType(MediaType.APPLICATION_JSON).content(withAddon))
+                    .andExpect(status().isNoContent());
+            mockMvc.perform(asAdmin(get("/api/admin/products/" + suit)))
+                    .andExpect(jsonPath("$.addons.length()").value(1))
+                    .andExpect(jsonPath("$.addons[0].productId").value(tie))
+                    .andExpect(jsonPath("$.addons[0].slug").value("addon-tie"))
+                    .andExpect(jsonPath("$.addons[0].priceKrw").value(50000))
+                    .andExpect(jsonPath("$.addons[0].status").value("DRAFT"));
+            mockMvc.perform(asAdmin(post("/api/admin/products/" + suit + "/publish"))).andExpect(status().isNoContent());
+            // 붙인 타이가 아직 초안이면 손님 상세에 나가지 않는다
+            mockMvc.perform(get("/api/products/addon-suit")).andExpect(jsonPath("$.addons.length()").value(0));
+            mockMvc.perform(asAdmin(put("/api/admin/products/" + tie)).contentType(MediaType.APPLICATION_JSON)
+                    .content(body("addon-tie", images))).andExpect(status().isNoContent());
+            mockMvc.perform(asAdmin(post("/api/admin/products/" + tie + "/publish"))).andExpect(status().isNoContent());
+            mockMvc.perform(get("/api/products/addon-suit"))
+                    .andExpect(jsonPath("$.addons[0].slug").value("addon-tie"))
+                    .andExpect(jsonPath("$.addons[0].priceKrw").value(50000))
+                    .andExpect(jsonPath("$.addons[0].basePriceKrw").value(100000))
+                    .andExpect(jsonPath("$.addons[0].skus[0].size").value("95"));
+
+            String copy = com.jayway.jsonpath.JsonPath.read(mockMvc.perform(asAdmin(post("/api/admin/products/" + suit + "/duplicate")))
+                    .andReturn().getResponse().getContentAsString(), "$.id");
+            mockMvc.perform(asAdmin(get("/api/admin/products/" + copy))).andExpect(jsonPath("$.addons[0].productId").value(tie));
+            // addons 를 안 보내면(엑셀 등록 · 예전 화면) 그대로 둔다
+            mockMvc.perform(asAdmin(put("/api/admin/products/" + suit)).contentType(MediaType.APPLICATION_JSON)
+                    .content(body("addon-suit", images))).andExpect(status().isNoContent());
+            mockMvc.perform(asAdmin(get("/api/admin/products/" + suit))).andExpect(jsonPath("$.addons.length()").value(1));
+
+            // 자기 자신 · 같은 상품 두 번 · 없는 상품은 400
+            for (String bad : new String[] {
+                    "[ {\"productId\":\"" + suit + "\"} ]",
+                    "[ {\"productId\":\"" + tie + "\"}, {\"productId\":\"" + tie + "\",\"priceKrw\":1000} ]",
+                    "[ {\"productId\":\"00000000-0000-0000-0000-000000000001\"} ]",
+                    "[ {\"productId\":\"" + tie + "\",\"priceKrw\":0} ]"}) {
+                mockMvc.perform(asAdmin(put("/api/admin/products/" + suit)).contentType(MediaType.APPLICATION_JSON)
+                                .content(body("addon-suit", images).replace("\"images\":", "\"addons\": " + bad + ", \"images\":")))
+                        .andExpect(status().isBadRequest());
+            }
+            // 비우면 함께 구매 상품이 없어진다 (한 트랜잭션 테스트라 같은 사진을 거듭 저장한 뒤의 손님 조회는 피하고 관리자 화면으로 본다)
+            mockMvc.perform(asAdmin(put("/api/admin/products/" + suit)).contentType(MediaType.APPLICATION_JSON)
+                    .content(body("addon-suit", images).replace("\"images\":", "\"addons\": [], \"images\":")))
+                    .andExpect(status().isNoContent());
+            mockMvc.perform(asAdmin(get("/api/admin/products/" + suit))).andExpect(jsonPath("$.addons.length()").value(0));
+        }
+
+        @Test
         @DisplayName("메인 사진 다섯 장(V41) — 대표 · 착용 · 디테일 · 추가 1 · 추가 2 가 손님 상세에 나간다")
         void fivePhotos() throws Exception {
             String id = createProduct("five-photos");

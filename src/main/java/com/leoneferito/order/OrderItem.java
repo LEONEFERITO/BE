@@ -48,6 +48,10 @@ public class OrderItem {
     @Column(name = "unit_price_krw", nullable = false)
     private long unitPriceKrw;
 
+    /** 함께 구매 금액이 적용된 줄이면 함께 산 상품 이름(V52, 주문 당시 복사본). 아니면 null */
+    @Column(name = "addon_of_name")
+    private String addonOfName;
+
     @Column(nullable = false)
     private short quantity;
 
@@ -65,7 +69,9 @@ public class OrderItem {
     }
 
     OrderItem(UUID id, UUID productId, String productSlug, String productName, String imageUrl,
-              String size, String color, long unitPriceKrw, short quantity, short leadTimeDays, int sortOrder) {
+              String size, String color, long unitPriceKrw, short quantity, short leadTimeDays, int sortOrder,
+              String addonOfName) {
+        this.addonOfName = addonOfName;
         this.id = id;
         this.productId = productId;
         this.productSlug = productSlug;
@@ -112,9 +118,14 @@ public class OrderItem {
         return color;
     }
 
-    /** 사람이 읽는 옵션 한 줄 — "블랙 / L", 컬러가 없으면 "L". 메일 · 송장 엑셀에 쓴다 */
+    public String getAddonOfName() {
+        return addonOfName;
+    }
+
+    /** 사람이 읽는 옵션 한 줄 — "블랙 / L", 컬러가 없으면 "L". 함께 구매 줄은 "(함께 구매 · 수트 이름)" 을 붙인다. 메일 · 송장 엑셀에 쓴다 */
     public String optionLabel() {
-        return color.isEmpty() ? size : color + " / " + size;
+        String option = color.isEmpty() ? size : color + " / " + size;
+        return addonOfName == null ? option : option + " (함께 구매 · " + addonOfName + ")";
     }
 
     public long getUnitPriceKrw() {

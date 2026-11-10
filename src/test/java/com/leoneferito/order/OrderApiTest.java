@@ -494,6 +494,71 @@ class OrderApiTest {
         }
     }
 
+    // ── 함께 구매 상품 (V52) ─────────────────────────────────────
+
+    @Nested
+    @DisplayName("함께 구매 상품(V52) — 셔츠에 트라우저를 붙이고 함께 구매 금액 150,000원")
+    class Addons {
+
+        @BeforeEach
+        void attached() {
+            jdbc.update("INSERT INTO product_addon (product_id, sort_order, addon_product_id, price_krw) "
+                    + "SELECT s.id, 0, t.id, 150000 FROM product s, product t WHERE s.slug = 'ot-shirt' AND t.slug = 'ot-trousers'");
+        }
+
+        private ResultActions addAddon(String addonOf, int qty) throws Exception {
+            return send(buyer, post("/api/cart/items"),
+                    "{\"slug\":\"ot-trousers\",\"size\":\"30\",\"quantity\":%d,\"addonOf\":\"%s\"}".formatted(qty, addonOf));
+        }
+
+        @Test
+        @DisplayName("함께 구매 금액은 셔츠가 같은 장바구니에 있을 때만 — 없으면 원래 판매가. 따로 담은 트라우저와는 다른 줄")
+        void bundlePriceNeedsParent() throws Exception {
+            addAddon("ot-shirt", 1).andExpect(status().isOk());
+            mockMvc.perform(get("/api/cart").cookie(buyer))
+                    .andExpect(jsonPath("$.items[0].unitPriceKrw").value(180_000))
+                    .andExpect(jsonPath("$.items[0].addonOf").value("브라운 셔츠"))
+                    .andExpect(jsonPath("$.items[0].bundleApplied").value(false))
+                    .andExpect(jsonPath("$.items[0].available").value(true));
+            addToCart("ot-shirt", "100", 1);
+            addToCart("ot-trousers", "30", 1); // 따로 담은 줄
+            mockMvc.perform(get("/api/cart").cookie(buyer))
+                    .andExpect(jsonPath("$.items.length()").value(3))
+                    .andExpect(jsonPath("$.items[0].unitPriceKrw").value(150_000))
+                    .andExpect(jsonPath("$.items[0].bundleApplied").value(true))
+                    .andExpect(jsonPath("$.items[2].unitPriceKrw").value(180_000))
+                    .andExpect(jsonPath("$.items[2].addonOf").doesNotExist())
+                    .andExpect(jsonPath("$.itemsAmountKrw").value(150_000 + 290_000 + 180_000));
+        }
+
+        @Test
+        @DisplayName("붙이지 않은 상품을 함께 구매로 담으면 400")
+        void notAttached() throws Exception {
+            send(buyer, post("/api/cart/items"), "{\"slug\":\"ot-shirt\",\"size\":\"100\",\"quantity\":1,\"addonOf\":\"ot-trousers\"}")
+                    .andExpect(status().isBadRequest());
+            addAddon("no-such-product", 1).andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @DisplayName("주문서도 같은 규칙 — 셔츠와 함께 주문하면 150,000원 · 주문에 «함께 구매» 가 남고, 트라우저만 주문하면 180,000원")
+        void orderUsesSameRule() throws Exception {
+            String res = addAddon("ot-shirt", 1).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            String trousers = JsonPath.read(res, "$.items[0].id");
+            String shirt = addToCart("ot-shirt", "100", 1);
+
+            String alone = send(buyer, post("/api/orders/quote"), "{\"cartItemIds\":[\"" + trousers + "\"]}")
+                    .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            assertThat(((Number) JsonPath.read(alone, "$.itemsAmountKrw")).longValue()).isEqualTo(180_000L);
+
+            Object[] o = createOrder(trousers, shirt);
+            confirm((String) o[0], "pk_addon", (long) o[1]).andExpect(status().isOk());
+            mockMvc.perform(get("/api/orders/" + o[0]).cookie(buyer))
+                    .andExpect(jsonPath("$.items[0].unitPriceKrw").value(150_000))
+                    .andExpect(jsonPath("$.items[0].addonOf").value("브라운 셔츠"))
+                    .andExpect(jsonPath("$.items[1].addonOf").doesNotExist());
+        }
+    }
+
     @Nested
     @DisplayName("주문 · 결제")
     class Payment {

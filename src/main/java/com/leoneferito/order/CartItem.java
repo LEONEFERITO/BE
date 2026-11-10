@@ -37,6 +37,10 @@ public class CartItem {
     @Column(nullable = false)
     private short quantity;
 
+    /** 함께 담은 상품(V52) — 수트 상세의 «함께 구매» 로 담은 줄이면 그 수트. 보통 줄은 null */
+    @Column(name = "addon_of", updatable = false)
+    private UUID addonOf;
+
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
     private Instant createdAt;
 
@@ -44,12 +48,13 @@ public class CartItem {
         // JPA
     }
 
-    CartItem(UUID memberId, UUID productId, String size, String color, int quantity) {
+    CartItem(UUID memberId, UUID productId, String size, String color, int quantity, UUID addonOf) {
         this.id = UUID.randomUUID();
         this.memberId = memberId;
         this.productId = productId;
         this.size = size;
         this.color = color == null ? "" : color;
+        this.addonOf = addonOf;
         setQuantity(quantity);
     }
 
@@ -83,6 +88,10 @@ public class CartItem {
 
     public short getQuantity() {
         return quantity;
+    }
+
+    public UUID getAddonOf() {
+        return addonOf;
     }
 
     public Instant getCreatedAt() {

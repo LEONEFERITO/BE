@@ -84,7 +84,9 @@ public final class ProductResponse {
              */
             List<String> heels,
             /** heels 와 같은 순서 · 길이의 추가 금액(V50). 기본은 0. 한 벌 값 = 판매가 + 고른 굽의 금액 */
-            List<Long> heelPrices) {
+            List<Long> heelPrices,
+            /** 함께 구매 상품(V52) — 공개된 것만, 관리자가 놓은 순서. 비어 있으면 없다 */
+            List<Addon> addons) {
     }
 
     /** 컬러 하나 — 이름과 동그라미 색(#RRGGBB) */
@@ -128,6 +130,14 @@ public final class ProductResponse {
                       String piece,
                       /** 이 사이즈를 누르면 보여 줄 사진 주소(V45). 고른 칸에 사진이 없거나 고르지 않았으면 null */
                       String imageUrl) {
+    }
+
+    /**
+     * 함께 구매 상품 하나(V52). priceKrw — 이 상품과 함께 살 때의 값(관리자가 정한 함께 구매 금액, 없으면 판매가),
+     * basePriceKrw — 원래 판매가. 굽 추가 금액(heelPrices)은 그대로 더한다. 담을 때는 slug · 사이즈 · 컬러에 addonOf(이 상품 slug)를 실어 보낸다.
+     */
+    public record Addon(String slug, String name, String category, String imageUrl, Long priceKrw, Long basePriceKrw,
+                        List<Color> colors, List<String> heels, List<Long> heelPrices, List<Sku> skus) {
     }
 
     public record Measurement(String part, BigDecimal valueCm, BigDecimal toleranceCm) {

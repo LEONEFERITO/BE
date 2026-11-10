@@ -38,12 +38,13 @@ public final class OrderResponse {
 
     /** id: 교환·반품을 신청할 때 어느 줄인지 가리키는 값. */
     /** color — 주문 당시 컬러(V46). 컬러가 없는 상품은 빈 값 */
+    /** addonOf — 함께 구매 금액이 적용된 줄이면 함께 산 상품 이름(V52) */
     public record Item(UUID id, String slug, String name, String imageUrl, String size, String color, long unitPriceKrw,
-                       int quantity, long lineAmountKrw, int leadTimeDays) {
+                       int quantity, long lineAmountKrw, int leadTimeDays, String addonOf) {
 
         static Item of(OrderItem i) {
             return new Item(i.getId(), i.getProductSlug(), i.getProductName(), i.getImageUrl(), i.getSize(), i.getColor(),
-                    i.getUnitPriceKrw(), i.getQuantity(), i.getLineAmountKrw(), i.getLeadTimeDays());
+                    i.getUnitPriceKrw(), i.getQuantity(), i.getLineAmountKrw(), i.getLeadTimeDays(), i.getAddonOfName());
         }
     }
 

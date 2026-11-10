@@ -121,7 +121,33 @@ public class ProductQueryService {
                 p.offers(Product.SuitSet.TWO) ? p.twoPiecePriceKrw() : null,
                 p.getColors().stream().map(c -> new ProductResponse.Color(c.name(), c.hex())).toList(),
                 p.isHeelOption() ? Product.HeelChoice.HEELS : List.of(),
-                p.isHeelOption() ? p.heelExtrasForDisplay() : List.of());
+                p.isHeelOption() ? p.heelExtrasForDisplay() : List.of(),
+                addons(p));
+    }
+
+    /** 함께 구매 상품(V52) — 공개 · 가격이 있는 것만. 수트 구성 상품은 붙지 않는다(관리자 저장이 막는다) */
+    private List<ProductResponse.Addon> addons(Product p) {
+        if (p.getAddons().isEmpty()) {
+            return List.of();
+        }
+        java.util.Map<java.util.UUID, Product> byId = products.findAllById(p.getAddons().stream().map(Product.Addon::productId).toList())
+                .stream().collect(java.util.stream.Collectors.toMap(Product::getId, x -> x));
+        return p.getAddons().stream()
+                .map(a -> java.util.Map.entry(a, byId.get(a.productId())))
+                .filter(e -> e.getValue() != null && e.getValue().isLive() && e.getValue().getStatus() == ProductStatus.PUBLISHED
+                        && e.getValue().getPriceKrw() != null && !e.getValue().isSuitSet())
+                .map(e -> {
+                    Product t = e.getValue();
+                    return new ProductResponse.Addon(t.getSlug(), t.getName(), t.getCategory().name(),
+                            t.mainImage().map(img -> mediaUrls.urlFor(img.getMedia())).orElse(null),
+                            e.getKey().priceKrw() != null ? e.getKey().priceKrw() : t.getPriceKrw(), t.getPriceKrw(),
+                            t.getColors().stream().map(c -> new ProductResponse.Color(c.name(), c.hex())).toList(),
+                            t.isHeelOption() ? Product.HeelChoice.HEELS : List.of(),
+                            t.isHeelOption() ? t.heelExtrasForDisplay() : List.of(),
+                            t.getSkus().stream().filter(s -> s.getPiece() == null)
+                                    .sorted(Comparator.comparingInt(ProductSku::getSortOrder)).map(this::toSku).toList());
+                })
+                .toList();
     }
 
     /** 차트가 없으면 null 을 준다. 화면은 그 자리를 비우고 안내 문구를 띄운다. */

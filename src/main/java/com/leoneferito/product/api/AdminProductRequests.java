@@ -132,7 +132,19 @@ public final class AdminProductRequests {
             Boolean heelOption,
             /** 굽 추가 금액(V50) — +1cm ~ +6cm 순서, 비운 단계는 0. 안 보내면(null) 저장된 값을 그대로 둔다 */
             @Size(max = 6) List<@jakarta.validation.constraints.NotNull @jakarta.validation.constraints.PositiveOrZero
-                    @jakarta.validation.constraints.Max(10_000_000) Long> heelPrices) {
+                    @jakarta.validation.constraints.Max(10_000_000) Long> heelPrices,
+            /** 함께 구매 상품(V52) — 관리자가 놓은 순서. 안 보내면(null) 저장된 값을 그대로 둔다 */
+            @Valid @Size(max = 12) List<Addon> addons) {
+
+        /** 같은 상품을 두 번 붙이면 손님 화면에 같은 줄이 둘 생긴다 */
+        @AssertTrue(message = "같은 상품을 함께 구매 상품으로 두 번 넣었습니다.")
+        public boolean isAddonUnique() {
+            if (addons == null) {
+                return true;
+            }
+            List<UUID> ids = addons.stream().filter(a -> a != null && a.productId() != null).map(Addon::productId).toList();
+            return ids.size() == new java.util.HashSet<>(ids).size();
+        }
 
         /** 굽높이는 보통 사이즈에만 붙는다 — 수트 구성(조각별 사이즈)과 함께 켜면 손님 화면이 줄을 만들 수 없다 */
         @AssertTrue(message = "굽높이 옵션은 수트 구성(조각별 사이즈) 상품에는 켤 수 없습니다.")
@@ -263,6 +275,10 @@ public final class AdminProductRequests {
     }
 
     /** 컬러 하나(V46) — 이름은 손님 화면 · 주문서에 그대로 나간다. 구성 줄 구분 글자(/ ·)는 못 쓴다 */
+    /** 함께 구매 상품 하나(V52) — 붙일 상품과 함께 구매 금액(비우면 원래 판매가) */
+    public record Addon(@NotNull UUID productId, @Positive @jakarta.validation.constraints.Max(100_000_000) Long priceKrw) {
+    }
+
     public record Color(
             @NotBlank @Size(max = 20)
             @Pattern(regexp = "^[^/·]+$", message = "컬러 이름에는 / 와 · 를 쓸 수 없습니다.") String name,

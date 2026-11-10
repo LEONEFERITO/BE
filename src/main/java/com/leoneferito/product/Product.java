@@ -264,6 +264,22 @@ public class Product {
     @BatchSize(size = 50)
     private List<Long> heelPrices = new ArrayList<>();
 
+    /**
+     * 함께 구매 상품 (V52, 2026-11-10 고객 "수트에 착장의 셔츠 · 타이 · 신발을 함께 고르게, 금액은 직접 설정").
+     * 관리자가 놓은 순서. 금액(priceKrw)이 없으면 그 상품의 원래 판매가다. 함께 구매 금액은 이 상품(수트)과 같은 장바구니 · 주문에 있을 때만.
+     */
+    @ElementCollection(fetch = FetchType.LAZY)
+    @CollectionTable(name = "product_addon", joinColumns = @JoinColumn(name = "product_id"))
+    @OrderColumn(name = "sort_order")
+    @BatchSize(size = 50)
+    private List<Addon> addons = new ArrayList<>();
+
+    /** 함께 구매 상품 하나 — 붙인 상품과 함께 구매 금액(없으면 원래 판매가) */
+    @Embeddable
+    public record Addon(@Column(name = "addon_product_id", nullable = false) UUID productId,
+                        @Column(name = "price_krw") Long priceKrw) {
+    }
+
     /** 컬러 하나 — 이름(손님 화면 · 주문서에 그대로)과 동그라미 색(#RRGGBB). */
     @Embeddable
     public record Color(@Column(nullable = false) String name, @Column(nullable = false) String hex) {
@@ -374,6 +390,21 @@ public class Product {
 
     public List<Color> getColors() {
         return List.copyOf(colors);
+    }
+
+    public List<Addon> getAddons() {
+        return List.copyOf(addons);
+    }
+
+    /** 함께 구매 상품을 통째로 바꾼다(V52). 값 목록이라 컬러처럼 바로 바꾼다 */
+    public void replaceAddons(List<Addon> next) {
+        addons.clear();
+        addons.addAll(next);
+    }
+
+    /** 이 상품에 붙인 함께 구매 상품이면 그 줄 */
+    public Optional<Addon> addonFor(UUID productId) {
+        return addons.stream().filter(a -> a.productId().equals(productId)).findFirst();
     }
 
     /**
@@ -886,12 +917,20 @@ public class Product {
      * 모르는 줄이거나 팔지 않는 구성이면 {@code null} — 담기 · 주문이 거절한다. 화면이 보낸 값은 믿지 않고 여기서 다시 정한다.
      */
     public Long priceFor(String size) {
+        return priceFor(size, null);
+    }
+
+    /**
+     * 판매가 대신 쓸 값(base)이 있을 때 — 함께 구매 금액(V52). 굽 추가 금액은 그대로 더한다. 수트 구성 상품은 함께 구매로 붙지 않으므로 base 를 쓰지 않는다.
+     */
+    public Long priceFor(String size, Long base) {
+        Long price = base != null && !isSuitSet() ? base : priceKrw;
         // 굽높이 옵션(V49) — 굽까지 고른 줄이어야 한다. 값 = 판매가 + 고른 굽의 추가 금액(V50)
         if (heelOption) {
-            return priceKrw == null ? null : HeelChoice.parse(size).map(h -> priceKrw + heelExtraKrw(h.heel())).orElse(null);
+            return price == null ? null : HeelChoice.parse(size).map(h -> price + heelExtraKrw(h.heel())).orElse(null);
         }
         if (!isSuitSet()) {
-            return priceKrw;
+            return price;
         }
         return SuitChoice.parse(size)
                 .filter(c -> offers(c.set()))

@@ -39,7 +39,7 @@ public class CartController {
 
     @PostMapping("/items")
     public CartService.CartView add(@AuthenticationPrincipal MemberPrincipal me, @Valid @RequestBody Add request) {
-        cart.add(me.getId(), request.slug(), request.size(), request.color(), request.quantity());
+        cart.add(me.getId(), request.slug(), request.size(), request.color(), request.quantity(), request.addonOf());
         return cart.view(me.getId());
     }
 
@@ -57,10 +57,12 @@ public class CartController {
     }
 
     /** color — 컬러가 있는 상품이면 목록 안의 이름(V46), 없는 상품이면 비운다 */
+    /** addonOf — 수트 상세의 «함께 구매» 로 담을 때 그 수트의 slug(V52). 보통은 비운다 */
     public record Add(@NotBlank @Size(max = 80) String slug,
                       @NotBlank @Size(max = 80) String size,
                       @Size(max = 20) String color,
-                      @Min(1) @Max(10) int quantity) {
+                      @Min(1) @Max(10) int quantity,
+                      @Size(max = 80) String addonOf) {
     }
 
     public record Change(@Min(1) @Max(10) int quantity) {

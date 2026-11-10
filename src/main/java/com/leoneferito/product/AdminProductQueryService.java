@@ -33,6 +33,20 @@ public class AdminProductQueryService {
         return toEdit(product);
     }
 
+    /** 붙인 상품의 지금 이름 · 상태 — 지운 상품은 빠진다(다음 저장 때 목록에서도 사라진다) */
+    private List<AdminProductResponse.Addon> addons(Product p) {
+        java.util.Map<UUID, Product> byId = products.findAllById(p.getAddons().stream().map(Product.Addon::productId).toList())
+                .stream().collect(java.util.stream.Collectors.toMap(Product::getId, x -> x));
+        return p.getAddons().stream()
+                .filter(a -> byId.containsKey(a.productId()) && byId.get(a.productId()).isLive())
+                .map(a -> {
+                    Product t = byId.get(a.productId());
+                    return new AdminProductResponse.Addon(t.getId(), t.getSlug(), t.getName(), t.getStatus().name(),
+                            t.getPriceKrw(), a.priceKrw());
+                })
+                .toList();
+    }
+
     private AdminProductResponse.Row toRow(Product p) {
         return new AdminProductResponse.Row(
                 p.getId(),
@@ -100,7 +114,8 @@ public class AdminProductQueryService {
                 p.getVestPriceKrw(),
                 p.getColors().stream().map(c -> new AdminProductResponse.Color(c.name(), c.hex())).toList(),
                 p.isHeelOption(),
-                p.getHeelPrices());
+                p.getHeelPrices(),
+                addons(p));
     }
 
     private AdminProductResponse.Sku toSku(ProductSku sku) {

@@ -348,6 +348,13 @@ public class GlobalExceptionHandler {
 	 *
 	 * <p>조용히 무시하면 관리자는 바뀐 줄 안다. 거부하고 이유를 말한다.
 	 */
+	/** 함께 구매 상품으로 붙일 수 없는 상품(V52) — 자기 자신 · 지운 상품 · 수트 구성. 400 */
+	@ExceptionHandler(com.leoneferito.product.AdminProductService.AddonInvalidException.class)
+	public ResponseEntity<ErrorResponse> handleAddonInvalid(com.leoneferito.product.AdminProductService.AddonInvalidException e) {
+		return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+				.body(ErrorResponse.of("ADDON_INVALID", e.getMessage(), currentTraceId()));
+	}
+
 	@ExceptionHandler(com.leoneferito.product.AdminProductService.SlugChangeNotAllowedException.class)
 	public ResponseEntity<ErrorResponse> handleSlugChange(com.leoneferito.product.AdminProductService.SlugChangeNotAllowedException e) {
 		return ResponseEntity.status(HttpStatus.CONFLICT)

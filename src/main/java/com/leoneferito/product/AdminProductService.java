@@ -125,6 +125,7 @@ public class AdminProductService {
         copy.replaceColors(src.getColors());
         copy.setHeelOption(src.isHeelOption());
         copy.replaceHeelPrices(src.getHeelPrices());
+        copy.replaceAddons(src.getAddons());
         copy.setDescription(src.getDescription());
         copy.setIntent(src.getIntent());
         copy.setFeatures(src.getFeatures());
@@ -252,6 +253,9 @@ public class AdminProductService {
         if (request.heelPrices() != null) {
             product.replaceHeelPrices(request.heelPrices());
         }
+        if (request.addons() != null) {
+            product.replaceAddons(request.addons().stream().map(a -> checkedAddon(product, a)).toList());
+        }
         if (request.colors() != null) {
             product.replaceColors(request.colors().stream()
                     .map(c -> new Product.Color(c.name().trim(), c.hex().toUpperCase(java.util.Locale.ROOT))).toList());
@@ -362,6 +366,29 @@ public class AdminProductService {
     public static class SlugChangeNotAllowedException extends RuntimeException {
         public SlugChangeNotAllowedException(String slug) {
             super("slug 변경 불가: " + slug);
+        }
+    }
+
+    /**
+     * 붙일 수 있는 상품인가 — 자기 자신이 아니고, 지우지 않았고, 수트 구성(조각별 사이즈) 상품이 아니다.
+     * 수트 구성은 구성 · 조각을 골라야 해 함께 구매 칸에서 고를 수 없다. 공개 여부는 묻지 않는다 — 손님 화면은 공개된 것만 보인다.
+     */
+    private Product.Addon checkedAddon(Product owner, AdminProductRequests.Addon a) {
+        if (a.productId().equals(owner.getId())) {
+            throw new AddonInvalidException("자기 자신은 함께 구매 상품으로 넣을 수 없습니다.");
+        }
+        Product target = products.findById(a.productId()).filter(Product::isLive)
+                .orElseThrow(() -> new AddonInvalidException("함께 구매 상품으로 고른 상품이 없습니다. 목록을 새로 고쳐 주세요."));
+        if (target.isSuitSet()) {
+            throw new AddonInvalidException("수트 구성(조각별 사이즈) 상품은 함께 구매 상품으로 넣을 수 없습니다.");
+        }
+        return new Product.Addon(target.getId(), a.priceKrw());
+    }
+
+    /** 함께 구매 상품을 붙일 수 없다(V52). 400. */
+    public static class AddonInvalidException extends RuntimeException {
+        public AddonInvalidException(String message) {
+            super(message);
         }
     }
 
