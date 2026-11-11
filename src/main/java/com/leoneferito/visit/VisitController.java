@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -56,6 +57,36 @@ public class VisitController {
         visits.record(hit, ip, request.getHeader("User-Agent"), selfHost);
         return ResponseEntity.noContent().build();
     }
+
+    /**
+     * 콘텐츠 보안 정책 위반 보고 (2026-11-11 보안 강화). 손님 화면의 Caddy 가 «보고만 하기»(Content-Security-Policy-Report-Only)로
+     * 스크립트 출처 제한을 걸어 두고, 막혔을 «뻔한» 것을 브라우저가 여기로 보낸다. 1~2주 모은 뒤 빠진 출처가 없으면 실제로 켠다.
+     * 저장하지 않고 로그 한 줄만(어느 쪽 · 무엇이 · 어느 페이지에서). 로그인 · CSRF 없이 받는다 — 브라우저가 쿠키 없이 보낸다.
+     * 접속 통계와 같은 IP 당 제한을 쓴다(한 페이지가 위반을 여러 번 낼 수 있다). 언제나 204.
+     */
+    @PostMapping(value = "/api/csp-report", consumes = MediaType.ALL_VALUE)
+    public ResponseEntity<Void> cspReport(@RequestBody(required = false) String body, HttpServletRequest request) {
+        String ip = request.getRemoteAddr();
+        if (body != null && (ip == null || limiter.consume(ip).allowed())) {
+            log.warn("CSP 위반 보고 directive={} blocked={} page={}",
+                    field(body, "effective-directive", "effectiveDirective", "violated-directive"),
+                    field(body, "blocked-uri", "blockedURL"), field(body, "document-uri", "documentURL"));
+        }
+        return ResponseEntity.noContent().build();
+    }
+
+    /** 보고 JSON 에서 값 하나(두 형식: report-uri 의 하이픈 이름 · Reporting API 의 낙타 이름). 길이를 자르고 줄바꿈을 지운다 */
+    private static String field(String body, String... names) {
+        for (String n : names) {
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"" + n + "\"\s*:\s*\"([^\"]{0,300})").matcher(body);
+            if (m.find()) {
+                return m.group(1).replaceAll("[\r\n]", " ");
+            }
+        }
+        return "-";
+    }
+
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(VisitController.class);
 
     /** from · to — 한국 날짜(yyyy-MM-dd), 둘 다 포함. 비우면 최근 30일 */
     @GetMapping("/api/admin/visit-stats")

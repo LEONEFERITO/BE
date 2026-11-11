@@ -109,6 +109,19 @@ class VisitApiTest {
     }
 
     @Test
+    @DisplayName("CSP 위반 보고는 로그인 · CSRF 없이 받고 언제나 204 — 두 형식(report-uri · Reporting API) · 빈 본문 · 엉뚱한 본문 모두")
+    void cspReport() throws Exception {
+        for (String body : new String[] {
+                "{\"csp-report\":{\"document-uri\":\"https://leoneferito.kr/checkout/\",\"effective-directive\":\"script-src-elem\",\"blocked-uri\":\"https://evil.example/x.js\"}}",
+                "[{\"type\":\"csp-violation\",\"body\":{\"documentURL\":\"https://leoneferito.kr/\",\"effectiveDirective\":\"connect-src\",\"blockedURL\":\"https://x.example\"}}]",
+                "not json"}) {
+            mockMvc.perform(post("/api/csp-report").contentType("application/csp-report").content(body)
+                    .with(r -> { r.setRemoteAddr("198.18.1.1"); return r; })).andExpect(status().isNoContent());
+        }
+        mockMvc.perform(post("/api/csp-report").contentType("application/reports+json")).andExpect(status().isNoContent());
+    }
+
+    @Test
     @DisplayName("로봇 · 관리자 화면 · 이상한 주소 · 브라우저 정보 없음은 세지 않는다(그래도 204)")
     void ignores() throws Exception {
         hit("{\"path\":\"/\",\"entry\":true}", "Mozilla/5.0 (compatible; Googlebot/2.1)", "192.0.2.1").andExpect(status().isNoContent());

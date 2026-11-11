@@ -45,6 +45,11 @@
 		#   다른 사이트가 이 화면을 틀 안에 넣지 못하게(클릭재킹), <base> 로 주소를 바꾸지 못하게, 플러그인(object) 금지.
 		#   스크립트 출처 제한(script-src)은 결제창 출처를 하나하나 확인한 뒤에 따로 켠다 — 오픈 직전에 결제를 막을 위험이 있다.
 		Content-Security-Policy "frame-ancestors 'self'; base-uri 'self'; object-src 'none'"
+		# 스크립트 · 연결 · 틀 출처 제한 — 지금은 «보고만 하기»(2026-11-11 보안 강화). 막지 않고, 어긋나는 것을 API 로 알린다(로그 «CSP 위반 보고»).
+		#   인라인 스크립트는 허용한다 — 정적 내보내기(Next)가 페이지마다 다른 인라인 스크립트를 넣어 해시 · nonce 로 묶을 수 없다.
+		#   대신 외부 스크립트는 나이스페이 결제창 · 카카오(다음) 우편번호만. 다른 곳의 스크립트를 끌어오는 공격을 막는 게 목적이다.
+		# 1~2주 동안 «CSP 위반 보고» 로그에 결제 · 우편번호 · 로그인 관련 출처가 없으면 이 줄의 이름에서 -Report-Only 를 지워 실제로 켠다.
+		Content-Security-Policy-Report-Only "script-src 'self' 'unsafe-inline' https://pay.nicepay.co.kr https://*.nicepay.co.kr https://t1.kakaocdn.net https://*.daumcdn.net https://*.daum.net; connect-src 'self' https://{$API_DOMAIN} https://*.nicepay.co.kr https://*.daum.net; frame-src 'self' https://*.nicepay.co.kr https://*.daum.net https://*.kakao.com; report-uri https://{$API_DOMAIN}/api/csp-report"
 	}
 
 	# 이름에 내용 해시가 붙는 파일은 1년 캐시. 나머지(HTML · 사진)는 매번 바뀌었는지 확인한다(ETag).
