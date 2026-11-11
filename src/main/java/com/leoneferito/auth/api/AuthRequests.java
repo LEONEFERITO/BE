@@ -51,6 +51,12 @@ public final class AuthRequests {
             @NotBlank @Size(max = 1000) String password) {
     }
 
+    /** 관리자 로그인 2단계(V54) — 1단계가 준 표와 OTP 앱의 6자리 */
+    public record AdminOtp(
+            @jakarta.validation.constraints.NotNull java.util.UUID challengeId,
+            @NotBlank @jakarta.validation.constraints.Pattern(regexp = "^\\d{6}$", message = "인증번호 6자리를 넣어 주세요.") String code) {
+    }
+
     /** 아이디 찾기 — 가입할 때(또는 마이페이지에서) 적은 이름과 휴대폰 번호. 하이픈은 있어도 없어도 된다. */
     public record FindEmail(
             @NotBlank @Size(max = 50) String name,

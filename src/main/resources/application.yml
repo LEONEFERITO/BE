@@ -97,6 +97,10 @@ app:
     # 제주 · 도서산간 추가 배송비 — "우편번호시작-끝:금액:이름" 을 쉼표로. 무료 배송 주문에도 붙는다.
     # 제주 63000~63644 · 울릉 40200~40240. 택배사는 CJ대한통운 — 그 회사 도서산간 우편번호 목록으로 넓힐 수 있다.
     remote-areas: ${ORDER_REMOTE_AREAS:63000-63644:3000:제주,40200-40240:5000:도서산간}
+  admin:
+    # 관리자 2단계 인증(OTP 앱, V54). 운영에서 끄는 건 비상용 — 최고 관리자가 OTP 를 잃어 아무도 초기화할 수 없을 때만
+    # .env 에 ADMIN_TWO_FACTOR=false 를 넣고 update.sh, 들어가서 초기화한 뒤 곧바로 지우고 다시 update.sh.
+    two-factor: ${ADMIN_TWO_FACTOR:true}
   auth:
     # 인증 주소의 IP 단위 요청 제한 (AuthRateLimitFilter).
     # 계정별 방어(로그인 잠금 · 재설정 메일 시간당 5회)는 계정을 바꿔가며 찍는 공격을 못 막는다.
@@ -233,6 +237,11 @@ server:
       cookie:
         # 로컬은 http 라서 secure 쿠키가 브라우저에 저장되지 않는다. 여기서만 끈다.
         secure: false
+
+# 로컬 개발은 OTP 없이 관리자 로그인(운영은 켜져 있다). 2단계를 로컬에서 보려면 ADMIN_TWO_FACTOR=true 로 띄운다
+app:
+  admin:
+    two-factor: ${ADMIN_TWO_FACTOR:false}
 
 logging:
   level:

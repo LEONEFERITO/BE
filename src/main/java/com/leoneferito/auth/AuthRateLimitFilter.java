@@ -86,7 +86,9 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
 	/** 실패만 센다. 둘 다 비밀번호를 받는 주소다. */
 	private static final Set<String> CREDENTIAL_PATHS = Set.of(
 			"/api/auth/login",
-			"/api/auth/admin-login");
+			"/api/auth/admin-login",
+			// 관리자 OTP 6자리(V54) — 틀린 횟수를 센다. 표 하나에 5번 제한과 별개로, 표를 새로 받아 가며 찍는 걸 막는다
+			"/api/auth/admin-login/otp");
 
 	/** 요청 자체가 비용이다 — 계정을 만들거나 메일을 보내거나, 이름 · 번호로 계정을 찾는다(훑기 방지). */
 	private static final Set<String> COSTLY_PATHS = Set.of(

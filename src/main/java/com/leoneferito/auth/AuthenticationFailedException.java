@@ -20,7 +20,11 @@ public class AuthenticationFailedException extends RuntimeException {
         /** 자격증명은 맞지만 실패 누적으로 잠겨 있다. */
         ACCOUNT_LOCKED,
         /** 자격증명은 맞지만 관리자가 이용을 정지했다. 잠금과 같은 규칙으로 비밀번호가 맞을 때만 알린다. */
-        ACCOUNT_SUSPENDED
+        ACCOUNT_SUSPENDED,
+        /** 관리자 2단계 — OTP 6자리가 맞지 않는다(V54) */
+        INVALID_OTP,
+        /** 관리자 2단계 — 표가 없거나 5분이 지났거나 5번 틀렸다. 비밀번호부터 다시 */
+        OTP_EXPIRED
     }
 
     private final Reason reason;

@@ -96,6 +96,25 @@ public class AdminMemberService {
         record(member, actorId, Action.UNLOCKED, null);
     }
 
+    /**
+     * 관리자 OTP 초기화(V54) — 폰을 잃은 관리자. 최고 관리자만, 자기 자신은 못 한다(자기 OTP 를 지우면 2단계가 무의미하다).
+     * 그 사람의 세션을 끊고, 다음 관리자 로그인에서 QR 로 새로 등록한다.
+     */
+    @Transactional
+    public void resetOtp(UUID actorId, UUID memberId) {
+        Member actor = requireAdmin(actorId);
+        if (actor.getRole() != MemberRole.SUPER_ADMIN) {
+            throw new MemberRuleException("OTP 초기화는 최고 관리자만 할 수 있습니다.");
+        }
+        Member member = findOther(actorId, memberId);
+        if (!member.getRole().isAdmin()) {
+            throw new MemberRuleException("관리자 계정만 OTP 가 있습니다.");
+        }
+        member.resetOtp();
+        sessionTerminator.terminateAll(member.getEmail());
+        record(member, actorId, Action.OTP_RESET, null);
+    }
+
     /** 이용 정지. 일반 회원만. 관리자를 정지하려면 먼저 권한을 내린다. 세션도 끊는다. */
     @Transactional
     public void suspend(UUID actorId, UUID memberId, String reason) {

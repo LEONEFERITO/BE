@@ -54,7 +54,8 @@ public class MeController {
                                  HttpServletRequest httpRequest, HttpServletResponse httpResponse) {
         Member member = accounts.updateProfile(principal.getId(), request.name(), request.phone());
 
-        MemberPrincipal refreshed = MemberPrincipal.from(member);
+        // 권한은 지금 세션 그대로 — 손님 권한으로 들어온 관리자 계정이 이름을 바꿨다고 관리자가 되지 않게(V54)
+        MemberPrincipal refreshed = new MemberPrincipal(member.getId(), member.getEmail(), member.getName(), principal.getRole());
         SecurityContext context = SecurityContextHolder.createEmptyContext();
         context.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(
                 refreshed, null, refreshed.getAuthorities()));

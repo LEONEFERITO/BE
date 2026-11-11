@@ -25,7 +25,9 @@ public class MemberAdminLog {
         SUSPENDED,
         REACTIVATED,
         UNLOCKED,
-        CREATED_BY_COMMAND
+        CREATED_BY_COMMAND,
+        /** 관리자 OTP 초기화(V54) — 폰 분실 */
+        OTP_RESET
     }
 
     @Id

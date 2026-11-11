@@ -175,7 +175,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/why").permitAll()
                         // 사이트 사진 칸(매장 사진 등) — 같은 이유로 빌드 때 받는다
                         .requestMatchers(HttpMethod.GET, "/api/site-images", "/api/hero-banners", "/api/site-business", "/api/site-guide").permitAll()
-                        .requestMatchers("/api/auth/signup", "/api/auth/login", "/api/auth/admin-login", "/api/auth/csrf",
+                        .requestMatchers("/api/auth/signup", "/api/auth/login", "/api/auth/admin-login", "/api/auth/admin-login/otp", "/api/auth/csrf",
                                 "/api/auth/social", "/api/auth/password-reset/**", "/api/auth/find-email").permitAll()
                         // 간편 로그인 시작·콜백. 인증 전에 오는 주소라 열어 둔다.
                         .requestMatchers("/oauth2/authorization/*", "/login/oauth2/code/*").permitAll()
@@ -195,6 +195,7 @@ public class SecurityConfig {
                          */
                         // 관리자 지정·해제는 최고 관리자만. 위에서부터 맞추므로 /api/admin/** 보다 먼저 와야 한다.
                         .requestMatchers(HttpMethod.PUT, "/api/admin/members/*/role").hasRole("SUPER_ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/admin/members/*/otp-reset").hasRole("SUPER_ADMIN")
                         // 접속 기록(V33) 조회는 최고 관리자만 — 관리자가 자기 기록을 못 보게가 아니라, 기록의 신뢰를 위해
                         .requestMatchers("/api/admin/access-logs").hasRole("SUPER_ADMIN")
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")

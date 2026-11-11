@@ -38,8 +38,9 @@ public final class AdminMemberResponse {
         }
     }
 
+    /** otpEnabledAt — 관리자 OTP 를 등록한 시각(V54). 없으면 아직 등록 전 */
     public record Detail(Row member, int failedLoginAttempts, Instant lockedUntil,
-                         Instant withdrawnAt, List<Log> logs) {
+                         Instant withdrawnAt, List<Log> logs, Instant otpEnabledAt) {
 
         static Detail of(AdminMemberService.Detail d) {
             Member m = d.member();
@@ -50,7 +51,7 @@ public final class AdminMemberResponse {
                 return new Log(l.getAction(), l.getDetail(), actorLabel, l.getCreatedAt());
             }).toList();
             return new Detail(Row.of(m, false), m.getFailedLoginAttempts(), m.getLockedUntil(),
-                    m.getWithdrawnAt(), logs);
+                    m.getWithdrawnAt(), logs, m.getOtpEnabledAt());
         }
     }
 

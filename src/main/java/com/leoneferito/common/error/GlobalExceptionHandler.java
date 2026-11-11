@@ -140,6 +140,8 @@ public class GlobalExceptionHandler {
 					+ "분 동안 로그인이 잠깁니다.";
 			case ACCOUNT_LOCKED -> "로그인 시도가 많아 계정이 잠겼습니다. 잠시 후 다시 시도해 주세요.";
 			case ACCOUNT_SUSPENDED -> "이용이 정지된 계정입니다. 고객센터로 문의해 주세요.";
+			case INVALID_OTP -> "인증번호가 맞지 않습니다. OTP 앱의 지금 6자리를 다시 넣어 주세요.";
+			case OTP_EXPIRED -> "인증 시간이 지났거나 여러 번 틀렸습니다. 처음부터 다시 로그인해 주세요.";
 		};
 		return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
 				.body(ErrorResponse.of(e.getReason().name(), message, traceId));

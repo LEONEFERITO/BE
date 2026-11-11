@@ -80,6 +80,17 @@ public class Member {
     @Column(name = "last_login_at")
     private Instant lastLoginAt;
 
+    /** 관리자 OTP 비밀 키(Base32, V54). 비어 있으면 다음 관리자 로그인 때 QR 로 등록한다 */
+    @Column(name = "otp_secret")
+    private String otpSecret;
+
+    @Column(name = "otp_enabled_at")
+    private Instant otpEnabledAt;
+
+    /** 마지막으로 받은 OTP 의 30초 칸 번호 — 같은 6자리를 두 번 받지 않는다 */
+    @Column(name = "otp_last_step")
+    private Long otpLastStep;
+
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
     private Instant createdAt;
 
@@ -278,6 +289,37 @@ public class Member {
     public void unlock() {
         this.failedLoginAttempts = 0;
         this.lockedUntil = null;
+    }
+
+    public String getOtpSecret() {
+        return otpSecret;
+    }
+
+    public Instant getOtpEnabledAt() {
+        return otpEnabledAt;
+    }
+
+    public Long getOtpLastStep() {
+        return otpLastStep;
+    }
+
+    /** OTP 를 등록한다(V54) — 처음 관리자 로그인에서 앱의 6자리를 맞혔을 때 */
+    public void enableOtp(String secret, Instant now, long step) {
+        this.otpSecret = secret;
+        this.otpEnabledAt = now;
+        this.otpLastStep = step;
+    }
+
+    /** 받은 6자리의 칸 번호를 남긴다 — 같은 번호를 다시 받지 않게 */
+    public void useOtpStep(long step) {
+        this.otpLastStep = step;
+    }
+
+    /** OTP 를 지운다(폰 분실) — 다음 관리자 로그인 때 새로 등록한다 */
+    public void resetOtp() {
+        this.otpSecret = null;
+        this.otpEnabledAt = null;
+        this.otpLastStep = null;
     }
 
     /** 역할 변경. 규칙(누가 누구를)은 부르는 쪽이 판단한다. 위 필드 주석 참고. */

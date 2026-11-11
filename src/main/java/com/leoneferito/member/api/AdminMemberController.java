@@ -47,6 +47,13 @@ public class AdminMemberController {
         return AdminMemberResponse.Detail.of(service.detail(actor.getId(), id));
     }
 
+    /** 관리자 OTP 초기화(V54) — 최고 관리자만(SecurityConfig · 서비스 둘 다 본다) */
+    @PostMapping("/{id}/otp-reset")
+    public ResponseEntity<Void> resetOtp(@AuthenticationPrincipal MemberPrincipal actor, @PathVariable UUID id) {
+        service.resetOtp(actor.getId(), id);
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/{id}/unlock")
     public ResponseEntity<Void> unlock(@AuthenticationPrincipal MemberPrincipal actor, @PathVariable UUID id) {
         service.unlock(actor.getId(), id);

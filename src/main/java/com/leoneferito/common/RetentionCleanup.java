@@ -72,8 +72,9 @@ public class RetentionCleanup {
         }
         deleteFiles(keys, "반품 사진");
 
-        // 2. 지난 재설정 링크
+        // 2. 지난 재설정 링크 · 지난 관리자 로그인 2단계 표(V54)
         int tokens = jdbc.update("DELETE FROM password_reset_token WHERE created_at < ?", dayAgo);
+        jdbc.update("DELETE FROM admin_login_challenge WHERE expires_at < ?", Timestamp.from(now));
 
         // 3. 오래된 관리자 접속 · 처리 기록
         Timestamp yearsAgo = Timestamp.from(now.minus(Duration.ofDays(365L * ADMIN_LOG_YEARS)));

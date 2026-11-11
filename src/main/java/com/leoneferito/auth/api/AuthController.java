@@ -104,22 +104,47 @@ public class AuthController {
                             HttpServletResponse httpResponse) {
 
         Member member = authService.login(request.email(), request.password());
-        return startSession(member, httpRequest, httpResponse);
+        // 관리자 계정이 손님용 로그인으로 들어오면 손님 권한만 — 관리자 화면은 OTP 를 거치는 관리자 로그인으로만 연다(V54)
+        return startSession(member, !authService.needsAdminOtp(member), httpRequest, httpResponse);
     }
 
     /**
      * 관리자 로그인 (/admin/login). 아이디 또는 이메일 + 비밀번호. 관리자가 아니면 일반 실패와 같은 답이다
      * ({@link AuthService#adminLogin}). 세션은 일반 로그인과 같은 것이다 — 관리자용 세션을 따로 두지 않는다.
      */
+    /*
+     * 2단계 인증이 켜져 있으면(V54) 여기서는 세션을 만들지 않고 OTP 를 물을 표만 준다 — {"step":"OTP", "challengeId"}.
+     * 아직 OTP 를 등록하지 않은 관리자면 {"step":"OTP_SETUP", "challengeId", "secret", "otpauthUri"} — 화면이 QR 을 그린다.
+     * 6자리는 /admin-login/otp 로 받고, 맞으면 그때 세션을 만든다.
+     */
     @PostMapping("/admin-login")
-    public MeResponse adminLogin(@Valid @RequestBody AuthRequests.AdminLogin request,
-                                 HttpServletRequest httpRequest,
-                                 HttpServletResponse httpResponse) {
+    public Object adminLogin(@Valid @RequestBody AuthRequests.AdminLogin request,
+                             HttpServletRequest httpRequest,
+                             HttpServletResponse httpResponse) {
         Member member = authService.adminLogin(request.loginId(), request.password());
-        return startSession(member, httpRequest, httpResponse);
+        if (!authService.isAdminTwoFactor()) {
+            return startSession(member, true, httpRequest, httpResponse);
+        }
+        AuthService.AdminChallenge c = authService.startAdminChallenge(member);
+        return new AdminStep(c.setupSecret() == null ? "OTP" : "OTP_SETUP", c.challengeId(), c.setupSecret(), c.otpauthUri());
     }
 
-    private MeResponse startSession(Member member, HttpServletRequest httpRequest,
+    /** 관리자 로그인 2단계 — OTP 6자리. 맞으면 세션을 만든다(요청 제한은 로그인과 같은 «실패» 구간, AuthRateLimitFilter) */
+    @PostMapping("/admin-login/otp")
+    public MeResponse adminOtp(@Valid @RequestBody AuthRequests.AdminOtp request,
+                               HttpServletRequest httpRequest,
+                               HttpServletResponse httpResponse) {
+        Member member = authService.verifyAdminOtp(request.challengeId(), request.code());
+        return startSession(member, true, httpRequest, httpResponse);
+    }
+
+    /** 관리자 로그인 1단계 응답(V54). secret · otpauthUri 는 처음 등록(OTP_SETUP)일 때만 */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    public record AdminStep(String step, java.util.UUID challengeId, String secret, String otpauthUri) {
+    }
+
+    /** adminGranted — false 면 관리자 계정이라도 손님 권한만 담는다(OTP 를 거치지 않은 로그인) */
+    private MeResponse startSession(Member member, boolean adminGranted, HttpServletRequest httpRequest,
                                     HttpServletResponse httpResponse) {
         HttpSession existing = httpRequest.getSession(false);
         if (existing != null) {
@@ -127,7 +152,8 @@ public class AuthController {
         }
         httpRequest.getSession(true);
 
-        MemberPrincipal principal = MemberPrincipal.from(member);
+        MemberPrincipal principal = adminGranted ? MemberPrincipal.from(member)
+                : new MemberPrincipal(member.getId(), member.getEmail(), member.getName(), com.leoneferito.member.MemberRole.MEMBER);
         Authentication authentication = UsernamePasswordAuthenticationToken.authenticated(
                 principal, null, principal.getAuthorities());
 
