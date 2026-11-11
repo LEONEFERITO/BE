@@ -47,6 +47,14 @@ if crontab -l 2>/dev/null | grep -q "deploy/backup.sh"; then
 else
   bad "cron 미등록 — crontab -e 에 추가:  30 4 * * * cd /opt/leoneferito/BE && bash deploy/backup.sh >> /opt/leoneferito/backups/backup.log 2>&1"
 fi
+if has BACKUP_REMOTE; then
+  has BACKUP_PASSPHRASE && has BACKUP_AWS_ACCESS_KEY_ID && has BACKUP_AWS_SECRET_ACCESS_KEY     && ok "서버 밖 백업: $(val BACKUP_REMOTE) (암호화 · 키 있음 ***)"     || bad "BACKUP_REMOTE 는 있는데 BACKUP_PASSPHRASE / BACKUP_AWS_* 가 비어 있다 — 백업이 실패한다"
+else
+  warn "서버 밖 백업 꺼짐 — 서버가 망가지면 백업도 같이 사라진다. .env.example 의 BACKUP_* 다섯 줄 참고"
+fi
+
+echo "▶ 관리자 2단계 인증"
+[ "$(val ADMIN_TWO_FACTOR)" = "false" ] && bad "ADMIN_TWO_FACTOR=false — 비상 스위치가 켜져 있다. OTP 를 초기화했으면 .env 에서 지우고 update.sh"   || ok "켜짐 (관리자 로그인에 OTP)"
 
 echo "▶ 건강 상태"
 domain="$(val API_DOMAIN)"
