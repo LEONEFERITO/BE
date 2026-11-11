@@ -25,6 +25,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,6 +35,8 @@ import org.springframework.transaction.annotation.Transactional;
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
 @Transactional
+// 요청 제한을 작게 — 테스트마다 다른 IP 를 쓰고, 한 IP 에서 5번을 넘기는 테스트는 rateLimited 뿐이다
+@TestPropertySource(properties = "app.visit.rate-limit=5")
 class VisitApiTest {
 
     private static final String CHROME = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
@@ -93,6 +96,16 @@ class VisitApiTest {
         assertThat(rows).extracting(r -> r.get("source")).containsExactly("INSTAGRAM", "DIRECT", "DIRECT", "OTHER");
         assertThat(rows.get(0)).containsEntry("utm_medium", "story").containsEntry("device", "MOBILE");
         assertThat(rows.get(3)).containsEntry("referrer_host", "blog.example.org");
+    }
+
+    @Test
+    @DisplayName("한 IP 가 창 하나에 한도(테스트 5번)를 넘기면 기록만 건너뛴다 — 응답은 그대로 204, 다른 IP 는 영향 없음")
+    void rateLimited() throws Exception {
+        for (int i = 0; i < 8; i++) {
+            hit("{\"path\":\"/\",\"entry\":false}", CHROME, "198.18.0.9").andExpect(status().isNoContent());
+        }
+        hit("{\"path\":\"/\",\"entry\":true}", CHROME, "198.18.0.10").andExpect(status().isNoContent());
+        assertThat(rows()).hasSize(6);
     }
 
     @Test

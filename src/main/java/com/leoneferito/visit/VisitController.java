@@ -1,8 +1,11 @@
 package com.leoneferito.visit;
 
+import com.leoneferito.auth.RateLimiter;
 import com.leoneferito.common.error.ErrorResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -23,22 +26,34 @@ import org.springframework.web.bind.annotation.RestController;
  * </ul>
  *
  * <p>IP 는 {@code getRemoteAddr()} — 운영에서는 프록시가 넘긴 실제 손님 주소다(AuthRateLimitFilter 주석 참고). 저장하지 않고 해시에만 쓴다.
+ *
+ * <p>요청 제한(2026-11-11 보안 강화) — IP 하나가 10분에 {@code app.visit.rate-limit}(기본 120)번까지만 기록한다.
+ * 사람이 둘러보면 10분에 수십 쪽이 고작이라, 그 위는 기계가 숫자를 부풀리거나 DB 를 채우려는 것이다.
+ * 넘어도 204 로 답하고 기록만 건너뛴다 — 손님 화면은 결과를 보지 않고, 막힌 줄도 모르게 둔다(다시 시도해 봐야 소용없다).
  */
 @RestController
 public class VisitController {
 
     private final VisitService visits;
     private final String selfHost;
+    private final RateLimiter limiter;
 
-    public VisitController(VisitService visits, @Value("${app.front.base-url}") String frontBaseUrl) {
+    public VisitController(VisitService visits, @Value("${app.front.base-url}") String frontBaseUrl,
+                           @Value("${app.visit.rate-limit:120}") int limit,
+                           @Value("${app.visit.rate-window:10m}") Duration window) {
         this.visits = visits;
+        this.limiter = new RateLimiter("visit", limit, window, 50_000, Instant::now);
         String host = URI.create(frontBaseUrl).getHost();
         this.selfHost = host == null ? null : host.replaceFirst("^www\\.", "");
     }
 
     @PostMapping("/api/visits")
     public ResponseEntity<Void> record(@RequestBody VisitService.Hit hit, HttpServletRequest request) {
-        visits.record(hit, request.getRemoteAddr(), request.getHeader("User-Agent"), selfHost);
+        String ip = request.getRemoteAddr();
+        if (ip != null && !limiter.consume(ip).allowed()) {
+            return ResponseEntity.noContent().build();
+        }
+        visits.record(hit, ip, request.getHeader("User-Agent"), selfHost);
         return ResponseEntity.noContent().build();
     }
 
